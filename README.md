@@ -32,4 +32,19 @@ python manage.py migrate && python manage.py seed && python manage.py runserver
 cd ../frontend && npm install && VITE_API_URL=http://localhost:8000 npm run dev
 ```
 
-Simulated integrations (clearly marked in code and API responses): domain registry, payment gateway, OAuth providers and address lookup. Each sits behind a single backend function, so a real provider can replace it without touching the rest.
+## Integrations
+
+| What | Provider | Code |
+|---|---|---|
+| Card payments | Stripe (test mode): Stripe.js Elements in the browser, PaymentIntents on the server | `backend/orders/payments/card.py` |
+| M-Pesa | Safaricom Daraja sandbox: STK push, callback, status query | `backend/orders/payments/mpesa.py` |
+| PayPal | PayPal Orders v2 sandbox | `backend/orders/payments/paypal.py` |
+| Sign-in | Google, GitHub and Google Workspace SSO (OAuth 2.0 authorization code) | `backend/accounts/oauth.py` |
+| Domain availability | The registries themselves: RDAP, WHOIS for `.ke` | `backend/domains/registry.py` |
+| Address suggestions | OpenStreetMap (Photon) | `backend/accounts/address_lookup.py` |
+
+Each provider is switched on by its keys (see `render.yaml`); the checkout only offers what is configured (`GET /api/v1/config/`). Tests replace every provider at its boundary, so CI never calls them.
+
+## API tests in Postman
+
+Import [`docs/postman/`](docs/postman/) (collection + environment) and click **Run collection**: every endpoint, with status-code and body checks.

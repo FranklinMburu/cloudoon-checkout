@@ -26,9 +26,9 @@ Admin: `python manage.py createsuperuser`, then http://localhost:8000/admin/ to 
 |---|---|
 | `catalog` | Models for every product, price, currency, country/tax rate and promo; the priced catalog endpoint; `seed` command |
 | `pricing` | `catalog.py` (catalog data as plain dataclasses) and `engine.py` (pure-Python `Decimal` pricing, no Django imports) · `loader.py` reads the catalog from the database with a short cache cleared on every admin edit · quote and promo endpoints |
-| `domains` | Domain availability (simulated registry, deterministic) |
-| `accounts` | Register, login, logout, me, password reset, simulated OAuth, address lookup |
-| `orders` | `services.place_order` (re-price → reserve → charge → mark paid), simulated payment gateway, receipts; views are thin HTTP wrappers |
+| `domains` | Domain availability from the registries (RDAP, WHOIS fallback), cached for ten minutes |
+| `accounts` | Register, login, logout, me, password reset, Google / GitHub / SSO sign-in (`oauth.py`), address suggestions (`address_lookup.py`) |
+| `orders` | `services.place_order` (re-price → reserve → charge → mark paid); `payments/` has one module per provider (Stripe, M-Pesa, PayPal); views are thin HTTP wrappers |
 
 ## API — `/api/v1/`
 
@@ -38,11 +38,16 @@ Admin: `python manage.py createsuperuser`, then http://localhost:8000/admin/ to 
 | POST | `quote/` | Cart → line items, renewals, savings, promo, tax, total, per-cycle prices |
 | POST | `promos/validate/` | `{code}` → label, or 400 with the reason (invalid / expired) |
 | GET | `domains/check/?q=` | Exact name + the other extensions |
-| GET | `addresses/?q=` | Address suggestions |
-| POST | `auth/register/` · `auth/login/` · `auth/oauth/{google,github,sso}/` | → `{token, user}`; send `Authorization: Token <token>` afterwards |
+| GET | `config/` | Which sign-in and payment options are switched on, and the public keys the browser SDKs need |
+| GET | `addresses/?q=&country=KE` | Address suggestions, billing country first |
+| POST | `auth/register/` · `auth/login/` | → `{token, user}`; send `Authorization: Token <token>` afterwards |
+| GET | `auth/oauth/{google,github,sso}/start/?nonce=` | Opened in a popup; redirects to the provider |
+| POST | `auth/oauth/result/` | `{nonce}` → 202 while signing in, then `{token, user}` once |
 | POST | `auth/logout/` · GET `auth/me/` | Authenticated |
 | POST | `auth/password-reset/` | Always 202 (no account enumeration) |
-| POST | `orders/` | Header `Idempotency-Key`; body `{cart, billing, payment, accept_terms}` → 201, or 200 for a repeated key, 402 if declined |
+| POST | `orders/` | Header `Idempotency-Key`; body `{cart, billing, payment, accept_terms}` → 201 paid · 202 waiting for M-Pesa · 200 repeated key (current status) · 402 declined · 409 domain just taken |
+| POST | `payments/paypal/orders/` | `{cart}` → `{id}` of the PayPal order to approve |
+| POST | `payments/mpesa/callback/<token>/` | Called by Safaricom |
 | GET | `orders/{reference}/` | Signed-in owner only. Guest receipts are returned once, by `POST /orders/` |
 
 Money is always returned as a string (`"86.28"`), never a float.
@@ -55,4 +60,5 @@ Money is always returned as a string (`"86.28"`), never a float.
 - **Database guards**: check constraints keep totals non-negative and reconciled (`total = subtotal − discount + tax`), and VPS pricing is a single-row table.
 - **Idempotency**: a unique `idempotency_key` per order means a refresh, double click or retry can't charge twice (also safe under a race, via the unique constraint).
 - **Authentication vs authorization**: tokens prove *who* you are; queryset filtering decides *what* you may read (your own orders only).
-- **Simulated integrations** (clearly marked in code and responses): registrar, payments (Stripe-style test tokens `tok_visa` / `tok_chargeDeclined`, M-Pesa, PayPal), OAuth providers and address lookup. Each sits behind one function so a real SDK can replace it without touching views.
+- **Integrations are switched on by keys** (`STRIPE_*`, `MPESA_*`, `PAYPAL_*`, `GOOGLE_*`, `GITHUB_*`); unconfigured ones are simply not offered. Tests stub each provider at its HTTP boundary.
+- **M-Pesa is asynchronous**: the order stays `pending` until Safaricom's callback; if the callback is lost, polling the same `Idempotency-Key` triggers an STK status query (at most every 10 s).

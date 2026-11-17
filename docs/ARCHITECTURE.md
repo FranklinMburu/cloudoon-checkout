@@ -8,7 +8,7 @@ api/client.ts ── GET  /catalog ──▶ catalog.presenter ◀── pricing
               ── GET  /domains ──▶ domains.service.check
               ── POST /auth/*  ──▶ accounts.views ────────────────────────▶ users, tokens
               ── POST /orders  ──▶ orders.services.place_order ───────────▶ orders, order items
-                                       └── orders.payments.charge
+                                       └── orders.payments.charge ──▶ Stripe · M-Pesa · PayPal
 ```
 
 ## Principles
@@ -22,7 +22,7 @@ api/client.ts ── GET  /catalog ──▶ catalog.presenter ◀── pricing
    - marks the order `paid`.
 
    A repeated key returns the existing order (HTTP 200). A declined payment rolls the transaction back (HTTP 402), so the same key can be retried.
-5. **Each integration sits behind one function**, so swapping a provider touches only that function.
+5. **Each integration sits behind one module** (`orders/payments/`, `accounts/oauth.py`, `domains/registry.py`, `accounts/address_lookup.py`), switched on by its keys. Swapping a provider touches only that module, and tests stub it at that boundary.
 
 ## Frontend state
 

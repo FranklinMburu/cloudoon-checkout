@@ -1,0 +1,2281 @@
+{
+  "info": {
+    "_postman_id": "dfded043-8284-5c02-8812-4dd1cb533f6b",
+    "name": "Cloudoon Checkout API",
+    "description": "# Cloudoon Checkout API\n\nEnd-to-end checks for the Django REST API behind the Cloudoon hosting checkout.\n\n## How to run\n1. **Import both files** (Postman → Import): `Cloudoon-Checkout.postman_collection.json` and `Cloudoon-Production.postman_environment.json`.\n2. **Select the environment** \"Cloudoon Production\" (top-right environment picker).\n3. **Run the collection** (… → Run collection) in folder order 1 → 7. Folders build on each other: the catalog request saves the default cart (`cart`), \"Login\" saves `token`, the first card order saves `order_reference`.\n\n## Cold start (free Render instance)\nThe API runs on Render's free plan and sleeps when idle. The **first request can take ~50 seconds** while it wakes up. In Postman → Settings → General set **Request timeout** to `0` (no limit) or at least `120000` ms, and re-run if the very first request timed out.\n\n## Authentication\nDRF **TokenAuthentication**, not JWT: send `Authorization: Token {{token}}` (the word `Token`, not `Bearer`). Logout deletes the token server-side; log in again to get a new one.\n\n## Notes\n- Money is always a string (`\"100.08\"`), never a float; tests check that, and that `total = subtotal − discount + tax`.\n- `POST /orders/` requires an `Idempotency-Key` header (8–64 chars). Re-sending the same key returns the existing order with 200 and never charges twice.\n- Card payments use Stripe test PaymentMethods (`pm_card_visa` succeeds, `pm_card_chargeDeclined` is declined → 402).\n- OAuth (Google/GitHub/SSO) is a browser popup flow; the collection only checks the 302 to the provider and the 202 \"waiting\" poll.\n- Folder 7 needs M-Pesa / PayPal sandbox keys on the server; its tests accept the \"not configured\" responses too.\n- Throttles: auth 20/min, orders 20/min — a single run stays well inside them.\n",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "1 · Health & config",
+      "description": "Server is up; which sign-in and payment methods are switched on.",
+      "item": [
+        {
+          "name": "Health check",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Body is {\"status\": \"ok\"}', () => pm.expect(pm.response.json()).to.eql({ status: 'ok' }));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/health/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "health",
+                ""
+              ]
+            },
+            "description": "Liveness probe. The first call may take ~50 s while the free Render instance wakes up."
+          },
+          "response": []
+        },
+        {
+          "name": "Checkout config (sign-in + payment methods)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "function save(name, value) {",
+                  "    // Keep collection variables and the selected environment in step (environment values win on lookup).",
+                  "    pm.collectionVariables.set(name, value);",
+                  "    if (pm.environment.name) { pm.environment.set(name, value); }",
+                  "}",
+                  "",
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('payments.methods is an array', () => pm.expect(body.payments.methods).to.be.an('array'));",
+                  "pm.test('sign_in includes \"github\"', () => pm.expect(body.sign_in).to.be.an('array').that.includes('github'));",
+                  "pm.test('paypal_currencies never includes KES', () => pm.expect(body.payments.paypal_currencies).to.not.include('KES'));",
+                  "save('sign_in_methods', JSON.stringify(body.sign_in || []));",
+                  "save('payment_methods', JSON.stringify(body.payments.methods || []));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/config/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "config",
+                ""
+              ]
+            },
+            "description": "Which sign-in and payment options are switched on, plus the public keys the browser needs."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "2 · Catalog & pricing",
+      "description": "Catalog priced per currency (saves `cart`), server-side quotes that reconcile, promo validation.",
+      "item": [
+        {
+          "name": "Catalog (USD, 12 months) → saves default cart",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "function save(name, value) {",
+                  "    // Keep collection variables and the selected environment in step (environment values win on lookup).",
+                  "    pm.collectionVariables.set(name, value);",
+                  "    if (pm.environment.name) { pm.environment.set(name, value); }",
+                  "}",
+                  "",
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('Has currencies, including USD and KES', () => {",
+                  "    const codes = body.currencies.map(c => c.code);",
+                  "    pm.expect(codes).to.include.members(['USD', 'KES']);",
+                  "});",
+                  "pm.test('Priced in USD', () => pm.expect(body.currency.code).to.eql('USD'));",
+                  "pm.test('Money values are strings, never floats', () => {",
+                  "    body.shared_plans.forEach(p => {",
+                  "        pm.expect(p.monthly).to.be.a('string');",
+                  "        pm.expect(p.regular_monthly).to.be.a('string');",
+                  "    });",
+                  "    body.tlds.forEach(t => pm.expect(t.register).to.be.a('string'));",
+                  "});",
+                  "pm.test('Billing cycles are 1, 12, 24, 36', () => pm.expect(body.cycles).to.eql([1, 12, 24, 36]));",
+                  "pm.test('default_cart is a KE shared-hosting cart', () => {",
+                  "    pm.expect(body.default_cart.category).to.eql('shared');",
+                  "    pm.expect(body.default_cart.country).to.eql('KE');",
+                  "});",
+                  "save('cart', JSON.stringify(body.default_cart));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/catalog/?currency=USD&cycle=12",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "catalog",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "currency",
+                  "value": "USD"
+                },
+                {
+                  "key": "cycle",
+                  "value": "12"
+                }
+              ]
+            },
+            "description": "Everything the configurator shows, priced for display. The test script stores `default_cart` in the `cart` variable (JSON string) that the quote, order and PayPal requests send."
+          },
+          "response": []
+        },
+        {
+          "name": "Catalog (KES, 12 months)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('Priced in KES with 0 decimals', () => {",
+                  "    pm.expect(body.currency.code).to.eql('KES');",
+                  "    pm.expect(body.currency.decimals).to.eql(0);",
+                  "});",
+                  "pm.test('KES prices are whole-shilling strings', () => {",
+                  "    body.shared_plans.forEach(p => pm.expect(p.regular_monthly).to.be.a('string').and.match(/^\\d+$/));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/catalog/?currency=KES&cycle=12",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "catalog",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "currency",
+                  "value": "KES"
+                },
+                {
+                  "key": "cycle",
+                  "value": "12"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Quote default cart",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "function money(v) { return parseFloat(v || '0'); }",
+                  "function expectReconciled(q) {",
+                  "    const discount = q.promo ? money(q.promo.amount) : money(q.discount);",
+                  "    const expected = (money(q.subtotal) - discount + money(q.tax)).toFixed(2);",
+                  "    pm.expect(money(q.total).toFixed(2), 'total = subtotal - discount + tax').to.eql(expected);",
+                  "}",
+                  "",
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "const q = pm.response.json();",
+                  "pm.test('Money values are strings', () => {",
+                  "    ['subtotal', 'savings', 'tax', 'total'].forEach(k => pm.expect(q[k], k).to.be.a('string'));",
+                  "    q.lines.forEach(l => pm.expect(l.due_today).to.be.a('string'));",
+                  "});",
+                  "pm.test('total = subtotal - discount + tax (to 2 dp)', () => expectReconciled(q));",
+                  "pm.test('Line items sum to the subtotal', () => {",
+                  "    const sum = q.lines.reduce((s, l) => s + money(l.due_today), 0);",
+                  "    pm.expect(sum.toFixed(2)).to.eql(money(q.subtotal).toFixed(2));",
+                  "});",
+                  "pm.test('Kenyan VAT is applied and no promo is set', () => {",
+                  "    pm.expect(q.tax_label).to.include('Kenya');",
+                  "    pm.expect(q.promo).to.be.null;",
+                  "});",
+                  "pm.test('Cycle options are offered for 1/12/24/36 months', () =>",
+                  "    pm.expect(q.cycle_options.map(o => o.months)).to.eql([1, 12, 24, 36]));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/quote/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "quote",
+                ""
+              ]
+            },
+            "description": "Body is the `cart` variable saved by the catalog request (built on the fly if it is missing).",
+            "body": {
+              "mode": "raw",
+              "raw": "{{cart}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Quote with promo WELCOME10",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const cart = JSON.parse(pm.variables.get('cart'));",
+                  "cart.promo_code = 'WELCOME10';",
+                  "pm.variables.set('cart_promo', JSON.stringify(cart));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "function money(v) { return parseFloat(v || '0'); }",
+                  "function expectReconciled(q) {",
+                  "    const discount = q.promo ? money(q.promo.amount) : money(q.discount);",
+                  "    const expected = (money(q.subtotal) - discount + money(q.tax)).toFixed(2);",
+                  "    pm.expect(money(q.total).toFixed(2), 'total = subtotal - discount + tax').to.eql(expected);",
+                  "}",
+                  "",
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "const q = pm.response.json();",
+                  "pm.test('Promo WELCOME10 applied, amount is a string', () => {",
+                  "    pm.expect(q.promo.code).to.eql('WELCOME10');",
+                  "    pm.expect(q.promo.amount).to.be.a('string');",
+                  "    pm.expect(money(q.promo.amount)).to.be.above(0);",
+                  "    pm.expect(q.promo_error).to.be.null;",
+                  "});",
+                  "pm.test('total = subtotal - discount + tax (to 2 dp)', () => expectReconciled(q));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/quote/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "quote",
+                ""
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{{cart_promo}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Validate promo welcome10 (case-insensitive)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('Normalised to WELCOME10 with a 10% label', () => {",
+                  "    pm.expect(body.code).to.eql('WELCOME10');",
+                  "    pm.expect(body.label).to.include('10% off');",
+                  "    pm.expect(body.applies_to).to.eql('all');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/promos/validate/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "promos",
+                "validate",
+                ""
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"code\": \"welcome10\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "3 · Domains & addresses",
+      "description": "Live registry lookups (RDAP/WHOIS) and address suggestions.",
+      "item": [
+        {
+          "name": "Domain check (unregistered .com)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('Exact name is available', () => {",
+                  "    pm.expect(body.exact.name).to.eql('cloudoon-postman-demo-7319.com');",
+                  "    pm.expect(body.exact.tld).to.eql('.com');",
+                  "    pm.expect(body.exact.available).to.be.true;",
+                  "});",
+                  "pm.test('Suggestions are the same label on other extensions', () => {",
+                  "    pm.expect(body.suggestions).to.be.an('array');",
+                  "    body.suggestions.forEach(s => {",
+                  "        pm.expect(s.name.startsWith('cloudoon-postman-demo-7319.')).to.be.true;",
+                  "        pm.expect(s.available).to.be.a('boolean');",
+                  "    });",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/domains/check/?q=cloudoon-postman-demo-7319.com",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "domains",
+                "check",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "cloudoon-postman-demo-7319.com"
+                }
+              ]
+            },
+            "description": "Live RDAP/WHOIS lookup. 503 only if the registry is unreachable."
+          },
+          "response": []
+        },
+        {
+          "name": "Domain check (URL input normalised, taken name)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('URL is normalised to google.com', () => pm.expect(body.exact.name).to.eql('google.com'));",
+                  "pm.test('google.com is reported as taken', () => pm.expect(body.exact.available).to.be.false);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/domains/check/?q=https://www.Google.com/about",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "domains",
+                "check",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "https://www.Google.com/about"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Address lookup (Westlands, KE)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('results is an array', () => pm.expect(pm.response.json().results).to.be.an('array'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/addresses/?q=Westlands%20Road%20Nairobi&country=KE",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "addresses",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "Westlands%20Road%20Nairobi"
+                },
+                {
+                  "key": "country",
+                  "value": "KE"
+                }
+              ]
+            },
+            "description": "Photon (OpenStreetMap) suggestions. 503 only if Photon is down."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "4 · Accounts",
+      "description": "Register, login (saves `token`), me, password reset, OAuth popup start/poll, logout revokes the token, log back in.",
+      "item": [
+        {
+          "name": "Register a new account (random email)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "function save(name, value) {",
+                  "    // Keep collection variables and the selected environment in step (environment values win on lookup).",
+                  "    pm.collectionVariables.set(name, value);",
+                  "    if (pm.environment.name) { pm.environment.set(name, value); }",
+                  "}",
+                  "",
+                  "const suffix = Date.now() + '-' + Math.floor(Math.random() * 1e6);",
+                  "save('signup_email', `postman-${suffix}@example.com`);",
+                  "save('signup_password', 'Sunrise-Nairobi-26');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "function save(name, value) {",
+                  "    // Keep collection variables and the selected environment in step (environment values win on lookup).",
+                  "    pm.collectionVariables.set(name, value);",
+                  "    if (pm.environment.name) { pm.environment.set(name, value); }",
+                  "}",
+                  "",
+                  "pm.test('Status code is 201', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.test('Returns a DRF token and the new user', () => {",
+                  "    pm.expect(body.token).to.be.a('string').with.lengthOf(40);",
+                  "    pm.expect(body.user.email).to.eql(pm.variables.get('signup_email'));",
+                  "    pm.expect(body.user.name).to.eql('Postman Tester');",
+                  "    pm.expect(body.user.provider).to.eql('signup');",
+                  "});",
+                  "// Kept for the \"another user's order → 404\" check in folder 6.",
+                  "save('signup_token', body.token || '');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/auth/register/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "register",
+                ""
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"email\": \"{{signup_email}}\",\n    \"password\": \"{{signup_password}}\",\n    \"full_name\": \"Postman Tester\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Login demo user → saves token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "function save(name, value) {",
+                  "    // Keep collection variables and the selected environment in step (environment values win on lookup).",
+                  "    pm.collectionVariables.set(name, value);",
+                  "    if (pm.environment.name) { pm.environment.set(name, value); }",
+                  "}",
+                  "",
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('Returns a 40-char DRF token for the demo user', () => {",
+                  "    pm.expect(body.token).to.be.a('string').with.lengthOf(40);",
+                  "    pm.expect(body.user.email).to.eql(pm.variables.get('demo_email'));",
+                  "    pm.expect(body.user.provider).to.eql('password');",
+                  "});",
+                  "save('token', body.token || '');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/auth/login/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "login",
+                ""
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"email\": \"{{demo_email}}\",\n    \"password\": \"{{demo_password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Me (authenticated)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Returns the signed-in demo user', () =>",
+                  "    pm.expect(pm.response.json().user.email).to.eql(pm.variables.get('demo_email')));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Token {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/auth/me/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "me",
+                ""
+              ]
+            },
+            "description": "Header: `Authorization: Token {{token}}` (DRF TokenAuthentication, not Bearer/JWT)."
+          },
+          "response": []
+        },
+        {
+          "name": "Password reset (always 202)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 202', () => pm.response.to.have.status(202));",
+                  "pm.test('Generic message that does not reveal whether the account exists', () =>",
+                  "    pm.expect(pm.response.json().detail).to.include('If an account exists'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/auth/password-reset/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "password-reset",
+                ""
+              ]
+            },
+            "description": "Always 202 with the same message whether or not the account exists (no account enumeration).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"email\": \"{{demo_email}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "OAuth start: GitHub → 302 to github.com",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "function save(name, value) {",
+                  "    // Keep collection variables and the selected environment in step (environment values win on lookup).",
+                  "    pm.collectionVariables.set(name, value);",
+                  "    if (pm.environment.name) { pm.environment.set(name, value); }",
+                  "}",
+                  "",
+                  "// 64 hex characters (two GUIDs without dashes) - matches ^[A-Za-z0-9_-]{32,64}$",
+                  "const hex = () => pm.variables.replaceIn('{{$guid}}').replace(/-/g, '');",
+                  "save('oauth_nonce', hex() + hex());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 302', () => pm.response.to.have.status(302));",
+                  "const location = pm.response.headers.get('Location') || '';",
+                  "pm.test('Location starts with https://github.com/login/oauth/authorize', () =>",
+                  "    pm.expect(location.startsWith('https://github.com/login/oauth/authorize')).to.be.true);",
+                  "pm.test('Location carries client_id and a signed state', () => {",
+                  "    pm.expect(location).to.include('client_id=');",
+                  "    pm.expect(location).to.include('state=');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/auth/oauth/github/start/?nonce={{oauth_nonce}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "oauth",
+                "github",
+                "start",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "nonce",
+                  "value": "{{oauth_nonce}}"
+                }
+              ]
+            },
+            "description": "The checkout opens this in a popup. Redirects are NOT followed here, so we can inspect the 302."
+          },
+          "response": [],
+          "protocolProfileBehavior": {
+            "followRedirects": false
+          }
+        },
+        {
+          "name": "OAuth start: Google → 302 to accounts.google.com",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "function save(name, value) {",
+                  "    // Keep collection variables and the selected environment in step (environment values win on lookup).",
+                  "    pm.collectionVariables.set(name, value);",
+                  "    if (pm.environment.name) { pm.environment.set(name, value); }",
+                  "}",
+                  "",
+                  "// 64 hex characters (two GUIDs without dashes) - matches ^[A-Za-z0-9_-]{32,64}$",
+                  "const hex = () => pm.variables.replaceIn('{{$guid}}').replace(/-/g, '');",
+                  "save('oauth_nonce', hex() + hex());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const signIn = JSON.parse(pm.variables.get('sign_in_methods') || '[]');",
+                  "if (signIn.includes('google')) {",
+                  "    pm.test('Status code is 302', () => pm.response.to.have.status(302));",
+                  "    const location = pm.response.headers.get('Location') || '';",
+                  "    pm.test('Location starts with https://accounts.google.com/o/oauth2/v2/auth', () =>",
+                  "        pm.expect(location.startsWith('https://accounts.google.com/o/oauth2/v2/auth')).to.be.true);",
+                  "    pm.test('Location carries client_id and a signed state', () => {",
+                  "        pm.expect(location).to.include('client_id=');",
+                  "        pm.expect(location).to.include('state=');",
+                  "    });",
+                  "} else {",
+                  "    pm.test('Google sign-in is not configured per /config/ → 400 popup page instead of 302', () =>",
+                  "        pm.response.to.have.status(400));",
+                  "    pm.test('Popup page says the option is unavailable', () =>",
+                  "        pm.expect(pm.response.text()).to.include('available'));",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/auth/oauth/google/start/?nonce={{oauth_nonce}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "oauth",
+                "google",
+                "start",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "nonce",
+                  "value": "{{oauth_nonce}}"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "protocolProfileBehavior": {
+            "followRedirects": false
+          }
+        },
+        {
+          "name": "OAuth result poll (fresh nonce) → 202 waiting",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "function save(name, value) {",
+                  "    // Keep collection variables and the selected environment in step (environment values win on lookup).",
+                  "    pm.collectionVariables.set(name, value);",
+                  "    if (pm.environment.name) { pm.environment.set(name, value); }",
+                  "}",
+                  "",
+                  "// 64 hex characters (two GUIDs without dashes) - matches ^[A-Za-z0-9_-]{32,64}$",
+                  "const hex = () => pm.variables.replaceIn('{{$guid}}').replace(/-/g, '');",
+                  "save('oauth_nonce', hex() + hex());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 202', () => pm.response.to.have.status(202));",
+                  "pm.test('Body is {\"status\": \"waiting\"}', () => pm.expect(pm.response.json()).to.eql({ status: 'waiting' }));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/auth/oauth/result/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "oauth",
+                "result",
+                ""
+              ]
+            },
+            "description": "The checkout polls this while the popup is open; a nonce nobody signed in with is still waiting.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"nonce\": \"{{oauth_nonce}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Logout (revokes token)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "function save(name, value) {",
+                  "    // Keep collection variables and the selected environment in step (environment values win on lookup).",
+                  "    pm.collectionVariables.set(name, value);",
+                  "    if (pm.environment.name) { pm.environment.set(name, value); }",
+                  "}",
+                  "",
+                  "pm.test('Status code is 204', () => pm.response.to.have.status(204));",
+                  "pm.test('No response body', () => pm.expect(pm.response.text()).to.eql(''));",
+                  "save('revoked_token', pm.variables.get('token'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Token {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/auth/logout/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "logout",
+                ""
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Me with the revoked token → 401",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 401', () => pm.response.to.have.status(401));",
+                  "pm.test('DRF says the token is invalid', () => pm.expect(pm.response.json().detail).to.include('Invalid token'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Token {{revoked_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/auth/me/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "me",
+                ""
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Log back in → saves a fresh token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "function save(name, value) {",
+                  "    // Keep collection variables and the selected environment in step (environment values win on lookup).",
+                  "    pm.collectionVariables.set(name, value);",
+                  "    if (pm.environment.name) { pm.environment.set(name, value); }",
+                  "}",
+                  "",
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('A new token, different from the revoked one', () => {",
+                  "    pm.expect(body.token).to.be.a('string').with.lengthOf(40);",
+                  "    pm.expect(body.token).to.not.eql(pm.variables.get('revoked_token'));",
+                  "});",
+                  "save('token', body.token || '');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/auth/login/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "login",
+                ""
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"email\": \"{{demo_email}}\",\n    \"password\": \"{{demo_password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "5 · Orders",
+      "description": "Card order as the demo user, idempotent replay, declined card, read the order back.",
+      "item": [
+        {
+          "name": "Place card order (pm_card_visa) → 201 paid",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "function save(name, value) {",
+                  "    // Keep collection variables and the selected environment in step (environment values win on lookup).",
+                  "    pm.collectionVariables.set(name, value);",
+                  "    if (pm.environment.name) { pm.environment.set(name, value); }",
+                  "}",
+                  "",
+                  "// New key for a new order; the next request re-sends the same one on purpose.",
+                  "save('idempotency_key', pm.variables.replaceIn('{{$guid}}'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "function save(name, value) {",
+                  "    // Keep collection variables and the selected environment in step (environment values win on lookup).",
+                  "    pm.collectionVariables.set(name, value);",
+                  "    if (pm.environment.name) { pm.environment.set(name, value); }",
+                  "}",
+                  "function money(v) { return parseFloat(v || '0'); }",
+                  "function expectReconciled(q) {",
+                  "    const discount = q.promo ? money(q.promo.amount) : money(q.discount);",
+                  "    const expected = (money(q.subtotal) - discount + money(q.tax)).toFixed(2);",
+                  "    pm.expect(money(q.total).toFixed(2), 'total = subtotal - discount + tax').to.eql(expected);",
+                  "}",
+                  "",
+                  "pm.test('Status code is 201', () => pm.response.to.have.status(201));",
+                  "const o = pm.response.json();",
+                  "pm.test('Order is paid', () => pm.expect(o.status).to.eql('paid'));",
+                  "pm.test('Has a UUID reference and a CL- number', () => {",
+                  "    pm.expect(o.reference).to.match(/^[0-9a-f-]{36}$/);",
+                  "    pm.expect(o.number).to.match(/^CL-/);",
+                  "});",
+                  "pm.test('Belongs to the demo user', () => pm.expect(o.email).to.eql(pm.variables.get('demo_email')));",
+                  "pm.test('Receipt label is \"Visa ending 4242\"', () => pm.expect(o.payment_label).to.eql('Visa ending 4242'));",
+                  "pm.test('Money values are strings and reconcile', () => {",
+                  "    ['subtotal', 'discount', 'tax', 'total'].forEach(k => pm.expect(o[k], k).to.be.a('string'));",
+                  "    expectReconciled(o);",
+                  "});",
+                  "save('order_reference', o.reference || '');",
+                  "save('order_number', o.number || '');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Token {{token}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotency_key}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/orders/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "orders",
+                ""
+              ]
+            },
+            "description": "Placed while signed in as the demo user, so it belongs to them. Stripe test PaymentMethod `pm_card_visa` succeeds. The server re-prices the cart; the client never sends a total.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"cart\": {{cart}},\n    \"billing\": {\n        \"full_name\": \"Amina Wanjiru\",\n        \"email\": \"amina@example.com\",\n        \"phone\": \"+254 712 345 678\",\n        \"country\": \"KE\",\n        \"address\": \"Westlands Road\",\n        \"city\": \"Nairobi\",\n        \"postal_code\": \"00800\"\n    },\n    \"payment\": {\n        \"method\": \"card\",\n        \"payment_method\": \"pm_card_visa\",\n        \"brand\": \"visa\",\n        \"last4\": \"4242\"\n    },\n    \"accept_terms\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Repeat with SAME Idempotency-Key → 200 same order",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200 (key already used, no second charge)', () => pm.response.to.have.status(200));",
+                  "const o = pm.response.json();",
+                  "pm.test('Same order reference as the first request', () =>",
+                  "    pm.expect(o.reference).to.eql(pm.variables.get('order_reference')));",
+                  "pm.test('Still paid', () => pm.expect(o.status).to.eql('paid'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Token {{token}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotency_key}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/orders/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "orders",
+                ""
+              ]
+            },
+            "description": "No pre-request script: re-uses the key saved by the previous request. The server returns the existing order and does not charge again.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"cart\": {{cart}},\n    \"billing\": {\n        \"full_name\": \"Amina Wanjiru\",\n        \"email\": \"amina@example.com\",\n        \"phone\": \"+254 712 345 678\",\n        \"country\": \"KE\",\n        \"address\": \"Westlands Road\",\n        \"city\": \"Nairobi\",\n        \"postal_code\": \"00800\"\n    },\n    \"payment\": {\n        \"method\": \"card\",\n        \"payment_method\": \"pm_card_visa\",\n        \"brand\": \"visa\",\n        \"last4\": \"4242\"\n    },\n    \"accept_terms\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Declined card (pm_card_chargeDeclined) → 402",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.variables.set('decline_key', pm.variables.replaceIn('{{$guid}}'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 402', () => pm.response.to.have.status(402));",
+                  "const body = pm.response.json();",
+                  "pm.test('Error names the payment field and says the card was declined', () => {",
+                  "    pm.expect(body.field).to.eql('payment');",
+                  "    pm.expect(body.detail).to.include('declined');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Token {{token}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{decline_key}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/orders/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "orders",
+                ""
+              ]
+            },
+            "description": "Nothing is saved on a decline, so the same key may be retried with another card.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"cart\": {{cart}},\n    \"billing\": {\n        \"full_name\": \"Amina Wanjiru\",\n        \"email\": \"amina@example.com\",\n        \"phone\": \"+254 712 345 678\",\n        \"country\": \"KE\",\n        \"address\": \"Westlands Road\",\n        \"city\": \"Nairobi\",\n        \"postal_code\": \"00800\"\n    },\n    \"payment\": {\n        \"method\": \"card\",\n        \"payment_method\": \"pm_card_chargeDeclined\",\n        \"brand\": \"visa\",\n        \"last4\": \"0002\"\n    },\n    \"accept_terms\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get my order by reference",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "function money(v) { return parseFloat(v || '0'); }",
+                  "function expectReconciled(q) {",
+                  "    const discount = q.promo ? money(q.promo.amount) : money(q.discount);",
+                  "    const expected = (money(q.subtotal) - discount + money(q.tax)).toFixed(2);",
+                  "    pm.expect(money(q.total).toFixed(2), 'total = subtotal - discount + tax').to.eql(expected);",
+                  "}",
+                  "",
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "const o = pm.response.json();",
+                  "pm.test('Same order, paid, with line items', () => {",
+                  "    pm.expect(o.reference).to.eql(pm.variables.get('order_reference'));",
+                  "    pm.expect(o.number).to.eql(pm.variables.get('order_number'));",
+                  "    pm.expect(o.status).to.eql('paid');",
+                  "    pm.expect(o.items).to.be.an('array').that.is.not.empty;",
+                  "});",
+                  "pm.test('Stored totals reconcile', () => expectReconciled(o));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Token {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/orders/{{order_reference}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "orders",
+                "{{order_reference}}",
+                ""
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "6 · Error handling",
+      "description": "Expected failures that prove validation, authentication (401) and authorization (404).",
+      "item": [
+        {
+          "name": "Catalog with unsupported currency → 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 400', () => pm.response.to.have.status(400));",
+                  "pm.test('Detail names the unsupported currency', () =>",
+                  "    pm.expect(pm.response.json().detail).to.include(\"Unsupported currency 'XYZ'\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/catalog/?currency=XYZ&cycle=12",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "catalog",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "currency",
+                  "value": "XYZ"
+                },
+                {
+                  "key": "cycle",
+                  "value": "12"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Catalog with invalid cycle → 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 400', () => pm.response.to.have.status(400));",
+                  "pm.test('Detail lists the allowed cycles', () =>",
+                  "    pm.expect(pm.response.json().detail).to.include('cycle must be one of'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/catalog/?currency=USD&cycle=7",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "catalog",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "currency",
+                  "value": "USD"
+                },
+                {
+                  "key": "cycle",
+                  "value": "7"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Expired promo SUMMER24 → 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 400', () => pm.response.to.have.status(400));",
+                  "pm.test('Detail says the code expired', () => pm.expect(pm.response.json().detail).to.include('expired'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/promos/validate/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "promos",
+                "validate",
+                ""
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"code\": \"SUMMER24\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Unknown promo NOPE → 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 400', () => pm.response.to.have.status(400));",
+                  "pm.test('Detail says the code is not valid', () =>",
+                  "    pm.expect(pm.response.json().detail).to.include('valid code'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/promos/validate/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "promos",
+                "validate",
+                ""
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"code\": \"NOPE\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Quote: VPS selected without VPS config → 400",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const cart = JSON.parse(pm.variables.get('cart'));",
+                  "cart.category = 'vps';",
+                  "delete cart.vps;",
+                  "pm.variables.set('cart_bad', JSON.stringify(cart));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 400', () => pm.response.to.have.status(400));",
+                  "const body = pm.response.json();",
+                  "pm.test('Invalid cart with an error on \"vps\"', () => {",
+                  "    pm.expect(body.detail).to.eql('Invalid cart.');",
+                  "    pm.expect(body.errors).to.have.property('vps');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/quote/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "quote",
+                ""
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{{cart_bad}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Invalid domain query → 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 400', () => pm.response.to.have.status(400));",
+                  "const body = pm.response.json();",
+                  "pm.test('Error points at field q and explains the rule', () => {",
+                  "    pm.expect(body.field).to.eql('q');",
+                  "    pm.expect(body.detail).to.include('hyphen');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/domains/check/?q=-bad-.com",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "domains",
+                "check",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "-bad-.com"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Order without Idempotency-Key → 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 400', () => pm.response.to.have.status(400));",
+                  "pm.test('Detail requires an Idempotency-Key header', () =>",
+                  "    pm.expect(pm.response.json().detail).to.include('Idempotency-Key'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Token {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/orders/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "orders",
+                ""
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"cart\": {{cart}},\n    \"billing\": {\n        \"full_name\": \"Amina Wanjiru\",\n        \"email\": \"amina@example.com\",\n        \"phone\": \"+254 712 345 678\",\n        \"country\": \"KE\",\n        \"address\": \"Westlands Road\",\n        \"city\": \"Nairobi\",\n        \"postal_code\": \"00800\"\n    },\n    \"payment\": {\n        \"method\": \"card\",\n        \"payment_method\": \"pm_card_visa\",\n        \"brand\": \"visa\",\n        \"last4\": \"4242\"\n    },\n    \"accept_terms\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Order without accepting terms → 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 400', () => pm.response.to.have.status(400));",
+                  "pm.test('Error on accept_terms', () =>",
+                  "    pm.expect(pm.response.json().accept_terms[0]).to.include('accept the terms'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Token {{token}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/orders/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "orders",
+                ""
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"cart\": {{cart}},\n    \"billing\": {\n        \"full_name\": \"Amina Wanjiru\",\n        \"email\": \"amina@example.com\",\n        \"phone\": \"+254 712 345 678\",\n        \"country\": \"KE\",\n        \"address\": \"Westlands Road\",\n        \"city\": \"Nairobi\",\n        \"postal_code\": \"00800\"\n    },\n    \"payment\": {\n        \"method\": \"card\",\n        \"payment_method\": \"pm_card_visa\",\n        \"brand\": \"visa\",\n        \"last4\": \"4242\"\n    },\n    \"accept_terms\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Order with one-word billing name → 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 400', () => pm.response.to.have.status(400));",
+                  "pm.test('Error on billing.full_name', () =>",
+                  "    pm.expect(pm.response.json().billing.full_name[0]).to.include('first and last name'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Token {{token}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/orders/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "orders",
+                ""
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"cart\": {{cart}},\n    \"billing\": {\n        \"full_name\": \"Amina\",\n        \"email\": \"amina@example.com\",\n        \"phone\": \"+254 712 345 678\",\n        \"country\": \"KE\",\n        \"address\": \"Westlands Road\",\n        \"city\": \"Nairobi\",\n        \"postal_code\": \"00800\"\n    },\n    \"payment\": {\n        \"method\": \"card\",\n        \"payment_method\": \"pm_card_visa\",\n        \"brand\": \"visa\",\n        \"last4\": \"4242\"\n    },\n    \"accept_terms\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Order with billing country ≠ cart country → 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 400', () => pm.response.to.have.status(400));",
+                  "pm.test('Error on billing.country', () =>",
+                  "    pm.expect(JSON.stringify(pm.response.json().billing.country)).to.include('must match'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Token {{token}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/orders/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "orders",
+                ""
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"cart\": {{cart}},\n    \"billing\": {\n        \"full_name\": \"Amina Wanjiru\",\n        \"email\": \"amina@example.com\",\n        \"phone\": \"+254 712 345 678\",\n        \"country\": \"GB\",\n        \"address\": \"Westlands Road\",\n        \"city\": \"Nairobi\",\n        \"postal_code\": \"00800\"\n    },\n    \"payment\": {\n        \"method\": \"card\",\n        \"payment_method\": \"pm_card_visa\",\n        \"brand\": \"visa\",\n        \"last4\": \"4242\"\n    },\n    \"accept_terms\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Login with wrong password → 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 400', () => pm.response.to.have.status(400));",
+                  "const body = pm.response.json();",
+                  "pm.test('Generic message, no token issued', () => {",
+                  "    pm.expect(body.detail).to.include('don’t match');",
+                  "    pm.expect(body).to.not.have.property('token');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/auth/login/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "login",
+                ""
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"email\": \"{{demo_email}}\",\n    \"password\": \"definitely-wrong\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Me without token → 401",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 401', () => pm.response.to.have.status(401));",
+                  "pm.test('Credentials were not provided', () =>",
+                  "    pm.expect(pm.response.json().detail).to.include('not provided'));",
+                  "pm.test('WWW-Authenticate advertises Token auth', () =>",
+                  "    pm.expect(pm.response.headers.get('WWW-Authenticate')).to.eql('Token'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/auth/me/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "me",
+                ""
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Order detail without token → 401",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 401', () => pm.response.to.have.status(401));",
+                  "pm.test('No order data leaked', () => {",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body).to.not.have.property('reference');",
+                  "    pm.expect(body.detail).to.be.a('string');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/orders/{{order_reference}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "orders",
+                "{{order_reference}}",
+                ""
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Another user's token on demo's order → 404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('signup_token is set (run folder 4 first)', () => pm.expect(pm.variables.get('signup_token')).to.not.be.empty);",
+                  "pm.test('Status code is 404', () => pm.response.to.have.status(404));",
+                  "pm.test('No order data leaked', () => pm.expect(pm.response.json()).to.not.have.property('reference'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Token {{signup_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/orders/{{order_reference}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "orders",
+                "{{order_reference}}",
+                ""
+              ]
+            },
+            "description": "Uses the token of the account registered in folder 4. Authorization: not your order → 404, so the reference's existence is not revealed."
+          },
+          "response": []
+        },
+        {
+          "name": "OAuth result with malformed nonce → 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 400', () => pm.response.to.have.status(400));",
+                  "pm.test('Detail says the sign-in request is invalid', () =>",
+                  "    pm.expect(pm.response.json().detail).to.include('Invalid sign-in request'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/auth/oauth/result/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "oauth",
+                "result",
+                ""
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"nonce\": \"short\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "7 · Optional (needs M-Pesa sandbox keys)",
+      "description": "Payment providers that need sandbox keys on the server. Tests accept the not-configured responses (402/400/503) and say so in their names.",
+      "item": [
+        {
+          "name": "M-Pesa order (KES) → 202 pending",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const cart = JSON.parse(pm.variables.get('cart'));",
+                  "cart.currency = 'KES';   // M-Pesa only takes Kenyan shillings",
+                  "cart.country = 'KE';",
+                  "pm.variables.set('cart_kes', JSON.stringify(cart));",
+                  "pm.variables.set('mpesa_key', pm.variables.replaceIn('{{$guid}}'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const code = pm.response.code;",
+                  "pm.test('202 pending if M-Pesa sandbox keys are configured, else 402 (not enabled) or 503 (Safaricom unreachable)', () =>",
+                  "    pm.expect(code).to.be.oneOf([202, 402, 503]));",
+                  "const body = pm.response.json();",
+                  "if (code === 202) {",
+                  "    pm.test('Order is pending, in KES, waiting for phone approval', () => {",
+                  "        pm.expect(body.status).to.eql('pending');",
+                  "        pm.expect(body.currency).to.eql('KES');",
+                  "        pm.expect(body.payment_label).to.include('M-Pesa');",
+                  "    });",
+                  "} else {",
+                  "    pm.test('Error explains the payment problem', () => {",
+                  "        pm.expect(body.field).to.eql('payment');",
+                  "        pm.expect(body.detail).to.be.a('string').and.not.empty;",
+                  "    });",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Token {{token}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{mpesa_key}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/orders/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "orders",
+                ""
+              ]
+            },
+            "description": "Sends an STK push to the Daraja sandbox test number 254708374149. Needs MPESA_* keys on the server: 202 pending when configured; 402 when M-Pesa is not switched on; 503 if Safaricom does not answer.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"cart\": {{cart_kes}},\n    \"billing\": {\n        \"full_name\": \"Amina Wanjiru\",\n        \"email\": \"amina@example.com\",\n        \"phone\": \"+254 712 345 678\",\n        \"country\": \"KE\",\n        \"address\": \"Westlands Road\",\n        \"city\": \"Nairobi\",\n        \"postal_code\": \"00800\"\n    },\n    \"payment\": {\n        \"method\": \"mpesa\",\n        \"phone\": \"0708374149\"\n    },\n    \"accept_terms\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "PayPal: create order for cart → 200 {id}",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const code = pm.response.code;",
+                  "pm.test('200 if PayPal sandbox keys are configured, else 503 (no keys / PayPal unreachable) or 400 (currency)', () =>",
+                  "    pm.expect(code).to.be.oneOf([200, 400, 503]));",
+                  "const body = pm.response.json();",
+                  "if (code === 200) {",
+                  "    pm.test('Returns the PayPal order id', () => pm.expect(body.id).to.be.a('string').and.not.empty);",
+                  "} else {",
+                  "    pm.test('Error explains the payment problem', () => pm.expect(body.detail).to.be.a('string').and.not.empty);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/payments/paypal/orders/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "payments",
+                "paypal",
+                "orders",
+                ""
+              ]
+            },
+            "description": "Creates the PayPal order the customer would approve, for the server-priced total (USD). Needs PAYPAL_* keys on the server: 200 when configured; 503 when PayPal is unreachable or keys are missing; 400 if the currency is not supported.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"cart\": {{cart}}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// If `cart` is not set yet (e.g. a single request is sent on its own), fetch the default cart first.",
+          "const raw = (pm.request.body && pm.request.body.raw) || '';",
+          "if (raw.includes('cart') && !pm.variables.get('cart')) {",
+          "    pm.sendRequest(pm.variables.replaceIn('{{base_url}}') + '/catalog/?currency=USD&cycle=12', (err, res) => {",
+          "        if (err || res.code !== 200) { console.warn('Could not fetch the default cart', err || res.code); return; }",
+          "        const cart = JSON.stringify(res.json().default_cart);",
+          "        pm.collectionVariables.set('cart', cart);",
+          "        if (pm.environment.name) { pm.environment.set('cart', cart); }",
+          "    });",
+          "}"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "https://cloudoon-checkout-api.onrender.com/api/v1",
+      "type": "string"
+    },
+    {
+      "key": "token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "cart",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "idempotency_key",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "order_reference",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "order_number",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "signup_email",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "signup_password",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "signup_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "revoked_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "oauth_nonce",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "sign_in_methods",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "payment_methods",
+      "value": "",
+      "type": "string"
+    }
+  ]
+}
