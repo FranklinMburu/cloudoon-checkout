@@ -96,7 +96,7 @@ export function AddressAutocomplete({ value, onChange, onSelect, onBlur, error }
       </FieldShell>
 
       {open && (
-        <ul id={listId} role="listbox" aria-label="Address suggestions" className="absolute z-20 mt-1 max-h-72 w-full overflow-auto rounded-xl border border-gray-200 bg-white py-1 shadow-lg">
+        <ul id={listId} role="listbox" aria-label="Address suggestions" className="absolute z-20 mt-1 max-h-72 w-full overflow-auto rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
           {loading ? (
             <li className="px-4 py-3 text-sm text-gray-600" role="option" aria-selected="false" aria-disabled="true">Searching addresses…</li>
           ) : results.length === 0 ? (

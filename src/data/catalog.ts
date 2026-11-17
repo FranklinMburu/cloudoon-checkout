@@ -37,10 +37,10 @@ export const CYCLE_DISCOUNTS: Record<ProductCategory, Record<Cycle, number>> = {
 /* ----------------------------- Categories ------------------------------ */
 
 export const CATEGORIES: { id: ProductCategory; label: string; tagline: string }[] = [
-  { id: 'shared', label: 'Shared Hosting', tagline: 'Websites, blogs & online stores' },
-  { id: 'vps', label: 'VPS', tagline: 'Your own virtual server, full root' },
-  { id: 'dedicated', label: 'Dedicated', tagline: 'A whole physical server' },
-  { id: 'cloud', label: 'Cloud', tagline: 'Scalable instances & Kubernetes' },
+  { id: 'shared', label: 'Shared Hosting', tagline: 'Websites & online stores' },
+  { id: 'vps', label: 'VPS', tagline: 'Virtual server, root access' },
+  { id: 'dedicated', label: 'Dedicated', tagline: 'Your own physical server' },
+  { id: 'cloud', label: 'Cloud', tagline: 'Autoscaling & Kubernetes' },
 ];
 
 /* --------------------------- Shared hosting ---------------------------- */
@@ -57,23 +57,23 @@ export interface SharedPlan {
 export const SHARED_PLANS: SharedPlan[] = [
   {
     id: 'web',
-    name: 'Web Hosting',
-    description: 'For a personal site or small business page.',
+    name: 'Web',
+    description: 'A personal or small business site.',
     monthly: 5.99,
     features: ['1 website', '25 GB NVMe storage', 'Unmetered bandwidth', 'Free SSL certificate', 'Weekly backups'],
   },
   {
     id: 'wordpress',
-    name: 'WordPress Hosting',
-    description: 'WordPress pre-installed and kept up to date.',
+    name: 'WordPress',
+    description: 'WordPress installed and kept updated.',
     monthly: 8.99,
     popular: true,
     features: ['3 websites', '50 GB NVMe storage', 'Unmetered bandwidth', 'Free SSL certificate', 'Automatic WordPress updates', 'Staging site'],
   },
   {
     id: 'woocommerce',
-    name: 'WooCommerce Hosting',
-    description: 'An online store with payments ready to go.',
+    name: 'WooCommerce',
+    description: 'An online store, ready to sell.',
     monthly: 14.99,
     features: ['10 websites', '100 GB NVMe storage', 'Unmetered bandwidth', 'Free SSL certificate', 'WooCommerce pre-installed', 'Double CPU & RAM'],
   },
@@ -199,9 +199,9 @@ export const ADDON_PRICING = {
 };
 
 export const SSL_OPTIONS: { id: SslOption; name: string; description: string; monthly: number }[] = [
-  { id: 'free', name: 'Standard SSL', description: "Domain validated (Let's Encrypt). Included free.", monthly: 0 },
-  { id: 'wildcard', name: 'Wildcard SSL', description: 'Covers all subdomains, e.g. shop. and blog.', monthly: 5.99 },
-  { id: 'ov', name: 'Business SSL (OV)', description: 'Shows your verified company name in the certificate.', monthly: 8.99 },
+  { id: 'free', name: 'Standard SSL', description: "Domain validated (Let's Encrypt)", monthly: 0 },
+  { id: 'wildcard', name: 'Wildcard SSL', description: 'Covers all subdomains (shop., blog.)', monthly: 5.99 },
+  { id: 'ov', name: 'Business SSL (OV)', description: 'Verified company name in the certificate', monthly: 8.99 },
 ];
 
 export const EMAIL_LIMITS = { min: 0, max: 50 };

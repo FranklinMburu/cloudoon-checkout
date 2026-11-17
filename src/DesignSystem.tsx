@@ -98,17 +98,18 @@ export function DesignSystem() {
           </div>
         </Block>
 
-        <Block title="Typography" description="Inter, one family. Sizes step clearly so the hierarchy reads at a glance.">
-          <div className="space-y-2">
-            <p className="text-3xl font-bold tracking-tight">Page title — 30/36 bold</p>
-            <p className="text-lg font-semibold">Section heading — 18/28 semibold</p>
-            <p className="text-base">Body — 16/24 regular. Inputs use 16px on mobile to prevent zoom.</p>
-            <p className="text-sm text-gray-600">Supporting text — 14/20, gray-600 (7.6:1)</p>
-            <p className="text-2xl font-bold tabular-nums">$107.64 <span className="text-sm font-normal text-gray-600">tabular figures for prices</span></p>
+        <Block title="Typography" description="Inter. Six sizes and three weights, used the same way on every screen.">
+          <div className="space-y-2.5">
+            <p className="text-2xl font-semibold tracking-tight">Page title <span className="text-[13px] font-normal text-gray-500">24 / 600 (20 on mobile)</span></p>
+            <p className="text-xl font-semibold tabular-nums">$100.08 <span className="text-[13px] font-normal text-gray-500">20 / 600 — prices & totals</span></p>
+            <p className="text-base font-semibold">Section title <span className="text-[13px] font-normal text-gray-500">16 / 600</span></p>
+            <p className="text-sm font-medium">Label, option name <span className="text-[13px] font-normal text-gray-500">14 / 500</span></p>
+            <p className="text-[13px] text-gray-600">Descriptions and helper text — 13 / 400, gray-600 (7.6:1)</p>
+            <p className="text-xs text-gray-500">Meta, renewal lines — 12 / 400, gray-500 (4.8:1)</p>
           </div>
         </Block>
 
-        <Block title="Buttons" description="Accent is reserved for the one conversion action on a screen. Every button is at least 44px tall.">
+        <Block title="Buttons" description="Accent is reserved for the one conversion action on a screen. Controls are 44px tall on phones and 40px on desktop.">
           <div className="space-y-5">
             {(['accent', 'primary', 'secondary'] as const).map((v) => (
               <div key={v} className="flex flex-wrap gap-6">

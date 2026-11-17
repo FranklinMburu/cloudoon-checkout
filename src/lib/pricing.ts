@@ -58,7 +58,7 @@ export function hostingBase(cart: CartState): HostingBase {
   switch (cart.category) {
     case 'shared': {
       const plan = SHARED_PLANS.find((p) => p.id === cart.shared.planId) ?? SHARED_PLANS[0];
-      return { title: plan.name, details: [plan.features.slice(0, 2).join(' · ')], monthlyUsd: plan.monthly };
+      return { title: `${plan.name} Hosting`, details: [plan.features.slice(0, 2).join(' · ')], monthlyUsd: plan.monthly };
     }
     case 'vps': {
       const v = cart.vps;

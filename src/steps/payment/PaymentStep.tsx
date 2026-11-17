@@ -5,7 +5,7 @@ import * as v from '../../lib/validation';
 import { useStore } from '../../state/store';
 import type { Quote } from '../../types';
 import { Card, Lock, Phone } from '../../components/icons';
-import { Button, Notice, RadioCard, Section, TextField } from '../../components/ui';
+import { Button, Notice, RadioCard, Section, TextButton, TextField } from '../../components/ui';
 
 type Method = 'card' | 'mpesa' | 'paypal';
 
@@ -77,22 +77,22 @@ export function PaymentStep({ onPlaced }: { onPlaced: (o: PlacedOrder) => void }
   const country = COUNTRIES.find((c) => c.code === b.country)?.name;
 
   return (
-    <form onSubmit={submit} noValidate className="space-y-4 sm:space-y-6">
-      <Section title="Payment method" description="You’ll be charged once, today. Renewals use the same method.">
+    <form onSubmit={submit} noValidate className="space-y-3 sm:space-y-4">
+      <Section title="Payment method" description="Charged once today. Renewals use the same method.">
         <fieldset>
           <legend className="sr-only">Payment method</legend>
-          <div className="grid gap-2 sm:grid-cols-3">
-            <MethodCard value="card" current={method} onChange={setMethod} icon={<Card size={20} />} title="Card" note="Visa, Mastercard, Amex" />
-            <MethodCard value="mpesa" current={method} onChange={setMethod} icon={<Phone size={20} />} title="M-Pesa" note="Pay from your phone" />
-            <MethodCard value="paypal" current={method} onChange={setMethod} icon={<span className="text-sm font-bold italic">P</span>} title="PayPal" note="Log in to PayPal" />
+          <div className="grid grid-cols-3 gap-2">
+            <MethodCard value="card" current={method} onChange={setMethod} icon={<Card size={18} />} title="Card" note="Visa, Mastercard, Amex" />
+            <MethodCard value="mpesa" current={method} onChange={setMethod} icon={<Phone size={18} />} title="M-Pesa" note="Approve on your phone" />
+            <MethodCard value="paypal" current={method} onChange={setMethod} icon={<span className="text-[13px] font-semibold italic">P</span>} title="PayPal" note="Pay with PayPal" />
           </div>
         </fieldset>
 
-        <div className="mt-5">
+        <div className="mt-4">
           {method === 'card' && (
-            <div className="grid gap-4 sm:grid-cols-6">
+            <div className="grid grid-cols-2 gap-x-3 gap-y-4">
               <TextField
-                className="sm:col-span-6"
+                className="col-span-2"
                 label="Card number"
                 inputMode="numeric"
                 autoComplete="cc-number"
@@ -101,92 +101,82 @@ export function PaymentStep({ onPlaced }: { onPlaced: (o: PlacedOrder) => void }
                 onBlur={touch('number')}
                 error={show('number')}
                 placeholder="1234 5678 9012 3456"
-                trailing={brand ? <span className="pr-3 text-xs font-semibold text-gray-700">{brand}</span> : undefined}
-                hint="Test: 4242 4242 4242 4242 succeeds · 4000 0000 0000 0002 is declined"
+                trailing={brand ? <span className="pr-3 text-xs font-medium text-gray-600">{brand}</span> : undefined}
+                hint="Test: 4242 4242 4242 4242 succeeds, 4000 0000 0000 0002 is declined"
               />
-              <TextField className="sm:col-span-3" label="Expiry date" inputMode="numeric" autoComplete="cc-exp" value={card.expiry} onChange={(x) => setCard({ ...card, expiry: v.formatExpiry(x) })} onBlur={touch('expiry')} error={show('expiry')} placeholder="MM / YY" />
-              <TextField className="sm:col-span-3" label="Security code (CVC)" inputMode="numeric" autoComplete="cc-csc" value={card.cvc} onChange={(x) => setCard({ ...card, cvc: x.replace(/\D/g, '').slice(0, 4) })} onBlur={touch('cvc')} error={show('cvc')} placeholder="3 or 4 digits" hint="On the back of your card" />
-              <TextField className="sm:col-span-6" label="Name on card" autoComplete="cc-name" value={card.name} onChange={(name) => setCard({ ...card, name })} onBlur={touch('name')} error={show('name')} />
+              <TextField label="Expiry" inputMode="numeric" autoComplete="cc-exp" value={card.expiry} onChange={(x) => setCard({ ...card, expiry: v.formatExpiry(x) })} onBlur={touch('expiry')} error={show('expiry')} placeholder="MM / YY" />
+              <TextField label="CVC" inputMode="numeric" autoComplete="cc-csc" value={card.cvc} onChange={(x) => setCard({ ...card, cvc: x.replace(/\D/g, '').slice(0, 4) })} onBlur={touch('cvc')} error={show('cvc')} placeholder="123" />
+              <TextField className="col-span-2" label="Name on card" autoComplete="cc-name" value={card.name} onChange={(name) => setCard({ ...card, name })} onBlur={touch('name')} error={show('name')} />
             </div>
           )}
           {method === 'mpesa' && (
             <div className="space-y-3">
               <TextField label="M-Pesa phone number" type="tel" inputMode="tel" autoComplete="tel" value={mpesa} onChange={setMpesa} onBlur={touch('mpesa')} error={show('mpesa')} placeholder="0712 345 678" />
-              <Notice>We’ll send a payment request to this phone. Enter your M-Pesa PIN to approve {money(quote.total, cur)}{cur !== 'KES' && ' (charged in KES at today’s rate)'}.</Notice>
+              <Notice>You’ll get a prompt on this phone to approve {money(quote.total, cur)}{cur !== 'KES' && ' (charged in KES at today’s rate)'}.</Notice>
             </div>
           )}
-          {method === 'paypal' && <Notice>A PayPal window opens when you place the order. You’ll come straight back here afterwards.</Notice>}
+          {method === 'paypal' && <Notice>PayPal opens in a pop-up when you continue, then brings you back here.</Notice>}
         </div>
       </Section>
 
-      <Section title="Review your order" description="Exactly what you pay today and what renews later.">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <caption className="sr-only">Charges today and at renewal</caption>
-            <thead>
-              <tr className="border-b border-gray-200 text-gray-600">
-                <th scope="col" className="py-2 pr-3 font-medium">Item</th>
-                <th scope="col" className="py-2 pr-3 text-right font-medium">Today</th>
-                <th scope="col" className="py-2 text-right font-medium">Then</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {quote.lines.map((l) => {
-                const months = l.kind === 'domain' ? 12 : cart.cycle;
-                return (
-                  <tr key={l.id} className="align-top">
-                    <td className="py-3 pr-3">
-                      <p className="font-medium text-gray-950">{l.title}</p>
-                      <p className="text-xs text-gray-600">{l.termLabel !== '—' ? `${l.termLabel} term` : l.details[0]}</p>
-                    </td>
-                    <td className="py-3 pr-3 text-right font-semibold whitespace-nowrap text-gray-950">{l.dueToday === 0 ? 'Free' : money(l.dueToday, cur)}</td>
-                    <td className="py-3 text-right text-xs whitespace-nowrap text-gray-700">
-                      {!l.renewal ? '—' : l.autoRenew === false ? <>Expires {addMonths(months)}<br />(auto-renew off)</> : <>{money(l.renewal.amount, cur)} on {addMonths(months)}<br />then {l.renewal.label}</>}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-            <tfoot className="border-t border-gray-200">
-              <tr><td className="pt-3 text-gray-700">Subtotal</td><td className="pt-3 pr-3 text-right">{money(quote.subtotal, cur)}</td><td /></tr>
-              {quote.promo && <tr><td className="text-green-700">Promo {quote.promo.code}</td><td className="pr-3 text-right text-green-700">−{money(quote.promo.amount, cur)}</td><td /></tr>}
-              <tr><td className="text-gray-700">Tax ({quote.taxLabel})</td><td className="pr-3 text-right">{money(quote.tax, cur)}</td><td /></tr>
-              <tr className="text-base font-bold text-gray-950"><td className="pt-2">Total today</td><td className="pt-2 pr-3 text-right whitespace-nowrap">{money(quote.total, cur)}</td><td /></tr>
-            </tfoot>
-          </table>
-        </div>
+      <Section title="Review" description="What you pay today, and what renews later.">
+        <ul className="divide-y divide-gray-100 border-y border-gray-100">
+          {quote.lines.map((l) => {
+            const months = l.kind === 'domain' ? 12 : cart.cycle;
+            return (
+              <li key={l.id} className="flex items-start justify-between gap-3 py-2.5">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium break-words text-gray-950">{l.title}</p>
+                  <p className="text-xs text-gray-500 tabular-nums">
+                    {l.termLabel !== '—' ? `${l.termLabel}` : 'No charge'}
+                    {l.renewal && (l.autoRenew === false
+                      ? <> · Expires {addMonths(months)}</>
+                      : <> · Then {money(l.renewal.amount, cur)} on {addMonths(months)}</>)}
+                  </p>
+                </div>
+                <span className="shrink-0 text-sm text-gray-950 tabular-nums">{l.dueToday === 0 ? 'Free' : money(l.dueToday, cur)}</span>
+              </li>
+            );
+          })}
+        </ul>
+        <dl className="mt-3 space-y-1.5 text-[13px]">
+          <div className="flex justify-between"><dt className="text-gray-600">Subtotal</dt><dd className="tabular-nums">{money(quote.subtotal, cur)}</dd></div>
+          {quote.promo && <div className="flex justify-between"><dt className="text-gray-600">Promo ({quote.promo.code})</dt><dd className="text-green-700 tabular-nums">−{money(quote.promo.amount, cur)}</dd></div>}
+          <div className="flex justify-between"><dt className="text-gray-600">Tax · {quote.taxLabel}</dt><dd className="tabular-nums">{money(quote.tax, cur)}</dd></div>
+          <div className="flex justify-between border-t border-gray-200 pt-2 text-sm font-semibold text-gray-950"><dt>Due today</dt><dd className="tabular-nums">{money(quote.total, cur)}</dd></div>
+        </dl>
 
-        <dl className="mt-5 grid gap-3 rounded-xl bg-gray-50 p-4 text-sm sm:grid-cols-2">
+        <dl className="mt-4 grid gap-3 rounded-lg bg-gray-50 p-3 text-[13px] sm:grid-cols-2">
           <ReviewItem label="Account" onEdit={() => setStep(2)}>{checkout.account?.email ?? b.email}</ReviewItem>
           <ReviewItem label="Billing address" onEdit={() => setStep(2)}>
-            {b.fullName}{b.isBusiness && b.company ? `, ${b.company}` : ''}<br />{b.address}, {b.city} {b.postalCode}, {country}
+            {b.fullName}{b.isBusiness && b.company ? `, ${b.company}` : ''}, {b.address}, {b.city} {b.postalCode}, {country}
           </ReviewItem>
         </dl>
 
-        <div className="mt-5 space-y-4">
-          <label className={`flex min-h-11 cursor-pointer items-start gap-3 rounded-lg p-2 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-brand-600 ${submitted && !agree ? 'bg-red-50 ring-1 ring-red-200' : ''}`}>
+        <div className="mt-4 space-y-3">
+          <label className={`-mx-2 flex min-h-11 cursor-pointer items-start gap-3 rounded-lg p-2 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-brand-600 ${submitted && !agree ? 'bg-red-50' : ''}`}>
             <input
               type="checkbox"
               checked={agree}
               onChange={(e) => setAgree(e.target.checked)}
               aria-invalid={submitted && !agree ? true : undefined}
               aria-describedby={submitted && !agree ? 'agree-error' : undefined}
-              className="mt-0.5 h-5 w-5 shrink-0 cursor-pointer accent-brand-600"
+              className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer accent-brand-600"
             />
-            <span className="text-sm text-gray-800">
-              I agree to the <a href="#terms" onClick={(e) => e.preventDefault()} className="font-semibold text-brand-700 underline">Terms of Service</a> and understand my services renew automatically at the prices above until I turn auto-renew off.
+            <span className="text-[13px] text-gray-700">
+              I agree to the <a href="#terms" onClick={(e) => e.preventDefault()} className="font-medium text-brand-700 underline underline-offset-2">Terms of Service</a>. My services renew automatically at the prices above until I turn auto-renew off.
             </span>
           </label>
-          {submitted && !agree && <p id="agree-error" role="alert" className="-mt-2 pl-2 text-sm text-red-700">Tick the box to confirm you agree to the terms.</p>}
+          {submitted && !agree && <p id="agree-error" role="alert" className="-mt-2 text-[13px] text-red-700">Please accept the terms to continue.</p>}
 
           {declined && <Notice tone="error">{declined}</Notice>}
 
           <Button type="submit" variant="accent" size="lg" fullWidth loading={processing}>
             {processing
-              ? method === 'mpesa' ? 'Waiting for M-Pesa approval…' : 'Processing payment…'
-              : <><Lock size={18} /> {method === 'paypal' ? 'Continue to PayPal' : `Pay ${money(quote.total, cur)} now`}</>}
+              ? method === 'mpesa' ? 'Waiting for M-Pesa approval…' : 'Processing…'
+              : <><Lock size={16} /> {method === 'paypal' ? 'Continue to PayPal' : `Pay ${money(quote.total, cur)}`}</>}
           </Button>
-          <p className="text-center text-xs text-gray-600">Payments are encrypted. We never store your full card number.</p>
+          <p className="text-center text-xs text-gray-500">Encrypted payment. We never store your full card number.</p>
         </div>
       </Section>
     </form>
@@ -194,13 +184,14 @@ export function PaymentStep({ onPlaced }: { onPlaced: (o: PlacedOrder) => void }
 }
 
 function MethodCard({ value, current, onChange, icon, title, note }: { value: Method; current: Method; onChange: (m: Method) => void; icon: ReactNode; title: string; note: string }) {
+  const on = current === value;
   return (
-    <RadioCard name="payment-method" value={value} checked={current === value} onChange={() => onChange(value)} className="p-3">
-      <span className="flex items-center gap-3">
-        <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${current === value ? 'bg-brand-600 text-white' : 'bg-gray-100 text-gray-700'}`}>{icon}</span>
-        <span>
-          <span className="block font-semibold text-gray-950">{title}</span>
-          <span className="block text-xs text-gray-600">{note}</span>
+    <RadioCard name="payment-method" value={value} checked={on} onChange={() => onChange(value)} indicator={false} className="justify-center sm:justify-start" label={title}>
+      <span className="flex flex-col items-center gap-1 sm:flex-row sm:gap-2.5">
+        <span className={on ? 'text-brand-600' : 'text-gray-500'}>{icon}</span>
+        <span className="text-center sm:text-left">
+          <span className="block text-sm font-medium text-gray-950">{title}</span>
+          <span className="hidden text-xs text-gray-500 sm:block">{note}</span>
         </span>
       </span>
     </RadioCard>
@@ -212,9 +203,9 @@ function ReviewItem({ label, children, onEdit }: { label: string; children: Reac
     <div>
       <dt className="flex items-center justify-between font-medium text-gray-950">
         {label}
-        <button type="button" onClick={onEdit} aria-label={`Edit ${label.toLowerCase()}`} className="-my-3 min-h-11 rounded-md px-2 text-sm font-semibold text-brand-700 hover:bg-brand-50 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:outline-none">Edit</button>
+        <TextButton onClick={onEdit} aria-label={`Edit ${label.toLowerCase()}`}>Edit</TextButton>
       </dt>
-      <dd className="mt-1 break-words text-gray-700">{children}</dd>
+      <dd className="break-words text-gray-600">{children}</dd>
     </div>
   );
 }

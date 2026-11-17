@@ -6,11 +6,11 @@ import * as v from '../../lib/validation';
 import { useStore } from '../../state/store';
 import { useMoney } from '../../state/useMoney';
 import type { DomainItem, DomainMode } from '../../types';
-import { Check, Globe, Search, Trash } from '../../components/icons';
-import { Badge, Button, Notice, Section, Segmented, Skeleton, Switch, TextField } from '../../components/ui';
+import { Alert, Check, Search } from '../../components/icons';
+import { Badge, Button, ListGroup, Notice, Section, Segmented, Skeleton, Switch, TextButton, TextField, cx, inputClass } from '../../components/ui';
 
 const MODES: { value: DomainMode; label: string }[] = [
-  { value: 'register', label: 'Register new' },
+  { value: 'register', label: 'Register' },
   { value: 'transfer', label: 'Transfer' },
   { value: 'existing', label: 'Use my own' },
 ];
@@ -20,22 +20,17 @@ export function DomainSection() {
   const [mode, setMode] = useState<DomainMode>('register');
   const [prefill, setPrefill] = useState('');
 
-  const switchToTransfer = (name: string) => {
-    setPrefill(name);
-    setMode('transfer');
-  };
-
   return (
     <Section
       id="domain"
       title="Domain"
-      description={cart.category === 'shared' ? 'Your website’s address. Optional — you can add one later.' : 'Optional. Add a domain to point at your server.'}
-      aside={freeDomainEligible(cart) ? <Badge tone="success">1st year free with this plan</Badge> : undefined}
+      description="Optional. You can also add one later."
+      aside={freeDomainEligible(cart) ? <Badge tone="success">Free 1st year</Badge> : undefined}
     >
       <Segmented label="Domain option" value={mode} onChange={(m) => { setMode(m); setPrefill(''); }} options={MODES} fullWidth />
 
       <div className="mt-4">
-        {mode === 'register' && <RegisterPanel onTransfer={switchToTransfer} />}
+        {mode === 'register' && <RegisterPanel onTransfer={(name) => { setPrefill(name); setMode('transfer'); }} />}
         {mode === 'transfer' && <TransferPanel key={prefill} initial={prefill} />}
         {mode === 'existing' && <ExistingPanel />}
       </div>
@@ -68,22 +63,29 @@ function RegisterPanel({ onTransfer }: { onTransfer: (name: string) => void }) {
 
   return (
     <div>
-      <form onSubmit={submit} className="flex flex-col gap-2 sm:flex-row sm:items-start" role="search" aria-label="Domain search">
-        <TextField
-          label="Find your domain"
-          className="flex-1"
-          value={query}
-          onChange={(val) => { setQuery(val); if (touched) setTouched(false); }}
-          placeholder="e.g. mybrand or mybrand.co.ke"
-          autoComplete="off"
-          autoCapitalize="none"
-          spellCheck={false}
-          error={error}
-          hint="Letters, numbers and hyphens. We’ll check popular endings too."
-        />
-        <Button type="submit" loading={loading} className="sm:mt-7" size="md">
-          {!loading && <Search size={18} />} Search
-        </Button>
+      <form onSubmit={submit} role="search" aria-label="Domain search">
+        <label htmlFor="domain-q" className="mb-1.5 block text-[13px] font-medium text-gray-900">Find a domain</label>
+        <div className="flex gap-2">
+          <div className="relative min-w-0 flex-1">
+            <Search size={16} className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-gray-400" />
+            <input
+              id="domain-q"
+              value={query}
+              onChange={(e) => { setQuery(e.target.value); if (touched) setTouched(false); }}
+              placeholder="yourbrand.com"
+              autoComplete="off"
+              autoCapitalize="none"
+              spellCheck={false}
+              aria-invalid={!!error || undefined}
+              aria-describedby={error ? 'domain-q-error' : undefined}
+              className={inputClass(!!error, 'pl-9')}
+            />
+          </div>
+          <Button type="submit" variant="secondary" loading={loading}>Search</Button>
+        </div>
+        {error && (
+          <p id="domain-q-error" role="alert" className="mt-1.5 flex items-start gap-1.5 text-[13px] text-red-700"><Alert size={14} className="mt-0.5 shrink-0" />{error}</p>
+        )}
       </form>
 
       <div aria-live="polite" aria-busy={loading}>
@@ -92,12 +94,10 @@ function RegisterPanel({ onTransfer }: { onTransfer: (name: string) => void }) {
           <div className="mt-4 space-y-3">
             <ResultRow result={results.exact} highlight onTransfer={onTransfer} />
             <div>
-              <h3 className="mb-2 text-sm font-semibold text-gray-700">More options</h3>
-              <ul className="divide-y divide-gray-100 rounded-xl border border-gray-200">
-                {results.suggestions.map((r) => (
-                  <li key={r.name}><ResultRow result={r} /></li>
-                ))}
-              </ul>
+              <p className="mb-1.5 text-xs font-medium tracking-wide text-gray-500 uppercase">Other extensions</p>
+              <div className="divide-y divide-gray-200 rounded-lg border border-gray-200">
+                {results.suggestions.map((r) => <ResultRow key={r.name} result={r} />)}
+              </div>
             </div>
           </div>
         )}
@@ -108,14 +108,16 @@ function RegisterPanel({ onTransfer }: { onTransfer: (name: string) => void }) {
 
 function ResultsSkeleton() {
   return (
-    <div className="mt-4 space-y-3" aria-label="Searching domains">
-      <Skeleton className="h-20 w-full rounded-xl" />
-      {[0, 1, 2].map((i) => (
-        <div key={i} className="flex items-center justify-between gap-4 rounded-xl border border-gray-100 p-3">
-          <Skeleton className="h-4 w-40" />
-          <Skeleton className="h-11 w-24 rounded-lg" />
-        </div>
-      ))}
+    <div className="mt-4 space-y-3">
+      <Skeleton className="h-16 w-full rounded-lg" />
+      <div className="divide-y divide-gray-100 rounded-lg border border-gray-100">
+        {[0, 1, 2].map((i) => (
+          <div key={i} className="flex items-center justify-between gap-4 px-3 py-3">
+            <div className="space-y-1.5"><Skeleton className="h-3.5 w-36" /><Skeleton className="h-3 w-24" /></div>
+            <Skeleton className="h-8 w-16 rounded-lg" />
+          </div>
+        ))}
+      </div>
       <span className="sr-only">Checking availability…</span>
     </div>
   );
@@ -125,48 +127,37 @@ function ResultRow({ result, highlight, onTransfer }: { result: DomainResult; hi
   const { cart, addDomain, removeLine } = useStore();
   const { usd } = useMoney();
   const inCart = cart.domains.find((d) => d.name === result.name);
-  const freeEligible = freeDomainEligible(cart) && result.tld.freeWithHosting && !freeDomainId(cart);
-
-  const add = () =>
-    addDomain({ name: result.name, tld: result.tld.tld, mode: 'register', autoRenew: true, privacy: result.tld.privacy });
+  const free = freeDomainEligible(cart) && result.tld.freeWithHosting && !freeDomainId(cart);
 
   return (
-    <div className={highlight ? `rounded-xl border-2 p-4 ${result.available ? 'border-green-600 bg-green-50/50' : 'border-gray-200 bg-gray-50'}` : 'p-3'}>
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="min-w-0">
-          <p className={`break-all font-semibold text-gray-950 ${highlight ? 'text-lg' : ''}`}>{result.name}</p>
+    <div className={cx('flex items-center justify-between gap-3 px-3 py-2.5', highlight && cx('rounded-lg border', result.available ? 'border-green-600/40 bg-green-50/60' : 'border-gray-200 bg-gray-50'))}>
+      <div className="min-w-0">
+        <p className="flex flex-wrap items-center gap-x-2 text-sm font-medium break-all text-gray-950">
+          {result.name}
+          {highlight && (result.available ? <span className="text-xs font-medium text-green-700">Available</span> : <span className="text-xs font-medium text-gray-500">Taken</span>)}
+        </p>
+        <p className="text-xs text-gray-500 tabular-nums">
           {result.available ? (
-            <p className="text-sm text-gray-700">
-              {highlight && <span className="font-medium text-green-800">Available · </span>}
-              {freeEligible ? (
-                <><span className="font-semibold text-green-800">Free 1st year</span> <span className="text-gray-500 line-through">{usd(result.tld.register)}</span></>
-              ) : (
-                <span className="font-semibold text-gray-950">{usd(result.tld.register)}/yr</span>
-              )}
-              <span className="text-gray-600"> · renews at {usd(result.tld.renew)}/yr</span>
-            </p>
-          ) : (
-            <p className="text-sm text-gray-600">Already registered by someone else</p>
-          )}
-        </div>
-        {result.available ? (
-          inCart ? (
-            <div className="flex items-center gap-1">
-              <span className="inline-flex items-center gap-1 px-2 text-sm font-semibold text-green-800"><Check size={18} /> Added</span>
-              <Button variant="danger-ghost" onClick={() => removeLine(`domain:${inCart.id}`)} aria-label={`Remove ${result.name}`}>Remove</Button>
-            </div>
-          ) : (
-            <Button variant={highlight ? 'primary' : 'secondary'} onClick={add}>Add to order</Button>
-          )
-        ) : (
-          <div className="flex flex-wrap items-center gap-2">
-            <Button variant="secondary" disabled>Taken</Button>
-            {onTransfer && (
-              <Button variant="ghost" onClick={() => onTransfer(result.name)}>I own it — transfer</Button>
-            )}
-          </div>
-        )}
+            free ? <><span className="font-medium text-green-700">Free 1st year</span>, then {usd(result.tld.renew)}/yr</> : <>{usd(result.tld.register)} 1st year, then {usd(result.tld.renew)}/yr</>
+          ) : 'Registered by someone else'}
+        </p>
       </div>
+      {result.available ? (
+        inCart ? (
+          <span className="flex items-center gap-2">
+            <span className="flex items-center gap-1 text-[13px] font-medium text-green-700"><Check size={14} /> Added</span>
+            <TextButton tone="muted" onClick={() => removeLine(`domain:${inCart.id}`)} aria-label={`Remove ${result.name}`}>Remove</TextButton>
+          </span>
+        ) : (
+          <Button size="sm" variant={highlight ? 'primary' : 'secondary'} onClick={() => addDomain({ name: result.name, tld: result.tld.tld, mode: 'register', autoRenew: true, privacy: result.tld.privacy })}>
+            Add
+          </Button>
+        )
+      ) : onTransfer ? (
+        <TextButton onClick={() => onTransfer(result.name)}>Transfer it</TextButton>
+      ) : (
+        <span className="text-xs text-gray-400">Unavailable</span>
+      )}
     </div>
   );
 }
@@ -183,9 +174,9 @@ function TransferPanel({ initial }: { initial: string }) {
 
   const name = v.normalizeDomain(domain);
   const tld = getTld('.' + name.split('.').slice(1).join('.'));
-  const domainError = v.fullDomain(domain) || (name && !tld ? 'We can transfer .com, .net, .org, .co.ke, .africa, .io, .dev and .store domains.' : '') ||
+  const domainError = v.fullDomain(domain) || (name && !tld ? 'We can transfer .com, .net, .org, .co.ke, .africa, .io, .dev and .store.' : '') ||
     (cart.domains.some((d) => d.name === name) ? 'This domain is already in your order.' : '');
-  const codeError = code.trim().length >= 6 ? '' : code ? 'Auth codes are at least 6 characters.' : 'Enter the auth (EPP) code from your current registrar.';
+  const codeError = code.trim().length >= 6 ? '' : code ? 'Auth codes are at least 6 characters.' : 'Enter the auth code from your current registrar.';
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
@@ -205,30 +196,29 @@ function TransferPanel({ initial }: { initial: string }) {
     <form onSubmit={submit} noValidate className="space-y-3">
       <div className="grid gap-3 sm:grid-cols-2">
         <TextField
-          label="Domain to transfer"
+          label="Domain"
           value={domain}
           onChange={setDomain}
           onBlur={() => setTouched((t) => ({ ...t, domain: true }))}
-          placeholder="mybrand.com"
+          placeholder="yourbrand.com"
           autoCapitalize="none"
           spellCheck={false}
           error={touched.domain ? domainError : ''}
-          valid={touched.domain && !domainError}
-          hint={tld ? `Transfer ${usd(tld.transfer)} · includes 1 extra year` : undefined}
+          hint={tld ? `${usd(tld.transfer)}, includes 1 extra year` : undefined}
         />
         <TextField
-          label="Auth / EPP code"
+          label="Auth (EPP) code"
           value={code}
           onChange={setCode}
           onBlur={() => setTouched((t) => ({ ...t, code: true }))}
           autoComplete="off"
           spellCheck={false}
           error={touched.code ? codeError : ''}
-          hint="Ask your current registrar for this code."
+          hint="From your current registrar"
         />
       </div>
-      <Notice>Before transferring, unlock the domain at your current registrar. Transfers usually finish within 5–7 days and your site stays online.</Notice>
-      <Button type="submit" variant="primary" loading={loading}>Add transfer to order</Button>
+      <p className="text-xs text-gray-500">Unlock the domain at your registrar first. Transfers take 5–7 days; your site stays online.</p>
+      <Button type="submit" variant="secondary" loading={loading}>Add transfer</Button>
     </form>
   );
 }
@@ -252,42 +242,36 @@ function ExistingPanel() {
   };
 
   return (
-    <form onSubmit={submit} noValidate className="space-y-3">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-start">
+    <form onSubmit={submit} noValidate>
+      <div className="flex items-start gap-2">
         <TextField
           label="Your domain"
-          className="flex-1"
+          className="min-w-0 flex-1"
           value={domain}
           onChange={setDomain}
           onBlur={() => setTouched(true)}
-          placeholder="mybrand.com"
+          placeholder="yourbrand.com"
           autoCapitalize="none"
           spellCheck={false}
           error={touched ? error : ''}
-          hint="Keep it with your current registrar. No charge from us."
+          hint={<>Stays with your registrar. Point it to <span className="font-mono">{NAMESERVERS[0]}</span> and <span className="font-mono">{NAMESERVERS[1]}</span>.</>}
         />
-        <Button type="submit" className="sm:mt-7">Use this domain</Button>
+        <Button type="submit" variant="secondary" className="mt-[26px]">Use</Button>
       </div>
-      <p className="text-sm text-gray-600">
-        After ordering, point your domain’s nameservers to <strong className="font-mono text-gray-900">{NAMESERVERS[0]}</strong> and{' '}
-        <strong className="font-mono text-gray-900">{NAMESERVERS[1]}</strong>.
-      </p>
     </form>
   );
 }
 
 /* ------------------------------ Domain list ---------------------------- */
 
-const MODE_LABEL: Record<DomainMode, string> = { register: 'New registration', transfer: 'Transfer', existing: 'Existing domain' };
+const MODE_LABEL: Record<DomainMode, string> = { register: 'Registration', transfer: 'Transfer', existing: 'External domain' };
 
 function DomainList() {
   const { cart } = useStore();
   return (
-    <div className="mt-6 border-t border-gray-100 pt-5">
-      <h3 className="mb-3 font-semibold text-gray-950">Domains in your order ({cart.domains.length})</h3>
-      <ul className="space-y-3">
-        {cart.domains.map((d) => <DomainCard key={d.id} domain={d} />)}
-      </ul>
+    <div className="mt-5 space-y-2">
+      <p className="text-xs font-medium tracking-wide text-gray-500 uppercase">In your order</p>
+      {cart.domains.map((d) => <DomainCard key={d.id} domain={d} />)}
     </div>
   );
 }
@@ -299,44 +283,36 @@ function DomainCard({ domain: d }: { domain: DomainItem }) {
   const isFree = freeDomainId(cart) === d.id;
 
   return (
-    <li className="rounded-xl border border-gray-200 p-3 sm:p-4">
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex min-w-0 items-start gap-3">
-          <Globe size={20} className="mt-0.5 shrink-0 text-brand-600" />
-          <div className="min-w-0">
-            <p className="break-all font-semibold text-gray-950">{d.name}</p>
-            <p className="text-sm text-gray-600">
-              {MODE_LABEL[d.mode]}
-              {d.mode !== 'existing' && tld && (
-                <> · {isFree ? 'Free 1st year' : usd(d.mode === 'transfer' ? tld.transfer : tld.register)} · renews at {usd(tld.renew)}/yr</>
-              )}
-            </p>
-          </div>
+    <ListGroup>
+      <div className="flex items-center justify-between gap-3 py-2.5">
+        <div className="min-w-0">
+          <p className="text-sm font-medium break-all text-gray-950">{d.name}</p>
+          <p className="text-xs text-gray-500 tabular-nums">
+            {MODE_LABEL[d.mode]}
+            {d.mode !== 'existing' && tld && <> · {isFree ? 'Free 1st year' : usd(d.mode === 'transfer' ? tld.transfer : tld.register)}, then {usd(tld.renew)}/yr</>}
+            {d.mode === 'existing' && ' · No charge'}
+          </p>
         </div>
-        <Button variant="danger-ghost" onClick={() => removeLine(`domain:${d.id}`)} aria-label={`Remove ${d.name}`}>
-          <Trash size={16} /> Remove
-        </Button>
+        <TextButton tone="muted" onClick={() => removeLine(`domain:${d.id}`)} aria-label={`Remove ${d.name}`}>Remove</TextButton>
       </div>
-
-      {d.mode === 'existing' ? (
-        <p className="mt-2 text-sm text-gray-600">Nameservers: <span className="font-mono">{NAMESERVERS.join(', ')}</span></p>
-      ) : (
-        <div className="mt-3 grid gap-2 md:grid-cols-2">
+      {d.mode !== 'existing' && (
+        <>
           <Switch
             checked={d.autoRenew}
             onChange={(autoRenew) => updateDomain(d.id, { autoRenew })}
             label="Auto-renew"
-            description={d.autoRenew ? 'Renews yearly so you never lose it' : 'Expires after 1 year unless you renew'}
+            description={d.autoRenew ? 'Renews every year' : 'Expires after 1 year'}
           />
           <Switch
             checked={tld?.privacy ? d.privacy : false}
             disabled={!tld?.privacy}
             onChange={(privacy) => updateDomain(d.id, { privacy })}
             label="WHOIS privacy"
-            description={tld?.privacy ? 'Hides your name & address · Free' : `The ${d.tld} registry doesn’t allow privacy`}
+            description={tld?.privacy ? 'Hides your contact details · Free' : `Not offered by the ${d.tld} registry`}
           />
-        </div>
+        </>
       )}
-    </li>
+      {d.mode === 'transfer' && <div className="py-2.5"><Notice>Transfer starts after payment. We’ll email you if the registrar needs approval.</Notice></div>}
+    </ListGroup>
   );
 }

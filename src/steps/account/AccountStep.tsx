@@ -4,7 +4,7 @@ import * as v from '../../lib/validation';
 import { useStore } from '../../state/store';
 import type { AuthMode, BillingDetails } from '../../types';
 import { Check } from '../../components/icons';
-import { Button, Section, SelectField, Switch, TextField } from '../../components/ui';
+import { Section, SelectField, Switch, TextButton, TextField } from '../../components/ui';
 import { AddressAutocomplete } from './AddressAutocomplete';
 import { AuthPanel, DEMO_PASSWORD, DEMO_PROFILE, useSignIn } from './AuthPanel';
 
@@ -84,22 +84,22 @@ export function AccountStep() {
   };
 
   return (
-    <form id={CHECKOUT_FORM_ID} onSubmit={submit} noValidate className="space-y-4 sm:space-y-6">
-      <Section title="Your account" description="Used to manage your services and receive invoices.">
+    <form id={CHECKOUT_FORM_ID} onSubmit={submit} noValidate className="space-y-3 sm:space-y-4">
+      <Section title="Account">
         {account ? (
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-green-200 bg-green-50 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-gray-200 p-3">
             <div className="flex items-start gap-3">
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-green-700 text-white"><Check size={20} /></span>
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-green-600 text-white"><Check size={16} /></span>
               <div>
-                <p className="font-semibold text-gray-950">
+                <p className="text-sm font-medium text-gray-950">
                   {account.provider === 'guest' ? 'Checking out as a guest' : account.provider === 'signup' ? 'New account details saved' : `Signed in as ${account.name}`}
                 </p>
-                <p className="text-sm text-gray-700">{account.email}{['google', 'github', 'sso', 'password'].includes(account.provider) && ` · via ${PROVIDER_LABEL[account.provider]}`}</p>
+                <p className="text-[13px] text-gray-600">{account.email}{['google', 'github', 'sso', 'password'].includes(account.provider) && ` · via ${PROVIDER_LABEL[account.provider]}`}</p>
               </div>
             </div>
-            <Button variant="secondary" onClick={() => setAccount(null)}>
-              {account.provider === 'guest' || account.provider === 'signup' ? 'Change' : 'Use a different account'}
-            </Button>
+            <TextButton onClick={() => setAccount(null)}>
+              {account.provider === 'guest' || account.provider === 'signup' ? 'Change' : 'Switch account'}
+            </TextButton>
           </div>
         ) : (
           <AuthPanel
@@ -151,7 +151,7 @@ export function AccountStep() {
           </div>
 
           <div className="mt-4">
-            <Switch checked={b.isBusiness} onChange={(isBusiness) => setBilling({ isBusiness })} label="I’m buying for a business" description="Add your company name and tax ID to the invoice." />
+            <Switch bordered checked={b.isBusiness} onChange={(isBusiness) => setBilling({ isBusiness })} label="Buying for a business" description="Add a company name and tax ID to the invoice" />
             {b.isBusiness && (
               <div className="mt-3 grid gap-4 sm:grid-cols-2">
                 <TextField label="Company name" autoComplete="organization" value={b.company} onChange={(company) => setBilling({ company })} onBlur={touch('company')} error={err('company')} />

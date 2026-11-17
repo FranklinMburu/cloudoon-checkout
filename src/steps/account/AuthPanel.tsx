@@ -3,7 +3,7 @@ import * as v from '../../lib/validation';
 import { useStore } from '../../state/store';
 import type { Account, AuthMode } from '../../types';
 import { Check, GitHubMark, GoogleMark, Key } from '../../components/icons';
-import { Button, Notice, Segmented, TextField, cx } from '../../components/ui';
+import { Button, Notice, Segmented, TextButton, TextField, cx } from '../../components/ui';
 
 /** Demo identities returned by the mocked OAuth / login calls. */
 export const DEMO_PROFILE = {
@@ -74,71 +74,68 @@ export function AuthPanel(p: AuthPanelProps) {
   const showPwErr = (pwTouched || p.showErrors) && !!pwErr;
   const ssoErr = v.email(ssoEmail);
 
-  return (
-    <div className="space-y-5">
-      <div>
-        <p className="mb-2 text-sm font-medium text-gray-900">Fastest: continue with an existing account</p>
-        <div className="grid gap-2 sm:grid-cols-3">
-          <Button variant="secondary" loading={oauthLoading === 'google'} disabled={!!oauthLoading} onClick={() => signIn('google')}>
-            {oauthLoading !== 'google' && <GoogleMark />} Google
-          </Button>
-          <Button variant="secondary" loading={oauthLoading === 'github'} disabled={!!oauthLoading} onClick={() => signIn('github')}>
-            {oauthLoading !== 'github' && <GitHubMark />} GitHub
-          </Button>
-          <Button variant="secondary" disabled={!!oauthLoading} onClick={() => setSsoOpen((o) => !o)} aria-expanded={ssoOpen}>
-            <Key size={18} /> Company SSO
+  const oauth = (
+    <div>
+      <div className="grid gap-2 sm:grid-cols-3">
+        <Button variant="secondary" loading={oauthLoading === 'google'} disabled={!!oauthLoading} onClick={() => signIn('google')}>
+          {oauthLoading !== 'google' && <GoogleMark size={16} />} Google
+        </Button>
+        <Button variant="secondary" loading={oauthLoading === 'github'} disabled={!!oauthLoading} onClick={() => signIn('github')}>
+          {oauthLoading !== 'github' && <GitHubMark size={16} />} GitHub
+        </Button>
+        <Button variant="secondary" disabled={!!oauthLoading} onClick={() => setSsoOpen((o) => !o)} aria-expanded={ssoOpen}>
+          <Key size={16} /> SSO
+        </Button>
+      </div>
+      {ssoOpen && (
+        <div className="mt-2 flex items-start gap-2 rounded-lg bg-gray-50 p-3">
+          <TextField
+            label="Work email"
+            className="min-w-0 flex-1"
+            type="email"
+            autoComplete="email"
+            value={ssoEmail}
+            onChange={setSsoEmail}
+            onBlur={() => setSsoTouched(true)}
+            error={ssoTouched ? ssoErr : ''}
+            hint="We’ll open your company’s sign-in page."
+            placeholder="you@company.com"
+          />
+          <Button
+            className="mt-[26px]"
+            loading={oauthLoading === 'sso'}
+            onClick={() => { setSsoTouched(true); if (!ssoErr) signIn('sso', ssoEmail.trim()); }}
+          >
+            Continue
           </Button>
         </div>
-        {ssoOpen && (
-          <div className="mt-3 flex flex-col gap-2 rounded-xl border border-gray-200 bg-gray-50 p-3 sm:flex-row sm:items-start">
-            <TextField
-              label="Work email"
-              className="flex-1"
-              type="email"
-              autoComplete="email"
-              value={ssoEmail}
-              onChange={setSsoEmail}
-              onBlur={() => setSsoTouched(true)}
-              error={ssoTouched ? ssoErr : ''}
-              hint="We’ll send you to your company’s sign-in page."
-              placeholder="you@company.com"
-            />
-            <Button
-              className="sm:mt-7"
-              loading={oauthLoading === 'sso'}
-              onClick={() => { setSsoTouched(true); if (!ssoErr) signIn('sso', ssoEmail.trim()); }}
-            >
-              Continue with SSO
-            </Button>
-          </div>
-        )}
+      )}
+      <div className="mt-4 flex items-center gap-3 text-xs text-gray-500" aria-hidden="true">
+        <span className="h-px flex-1 bg-gray-200" /> or with email <span className="h-px flex-1 bg-gray-200" />
       </div>
+    </div>
+  );
 
-      <div className="flex items-center gap-3 text-sm text-gray-500" aria-hidden="true">
-        <span className="h-px flex-1 bg-gray-200" /> or use your email <span className="h-px flex-1 bg-gray-200" />
-      </div>
-
+  return (
+    <div className="space-y-4">
       <Segmented
         label="How do you want to check out?"
         fullWidth
         value={p.mode}
         onChange={(m) => { p.setMode(m); setPwTouched(false); setResetSent(false); }}
         options={[
-          { value: 'signup', label: 'New account' },
+          { value: 'signup', label: 'New customer' },
           { value: 'guest', label: 'Guest' },
           { value: 'login', label: 'Log in' },
         ]}
       />
 
-      <p className="text-sm text-gray-600">
-        {p.mode === 'signup' && 'Create your account now — it’s where you’ll manage your hosting.'}
-        {p.mode === 'guest' && 'No password needed now. We’ll email your receipt and a link to set one up later.'}
-        {p.mode === 'login' && 'Welcome back. Your order is kept while you log in.'}
-      </p>
+      {p.mode === 'guest' && <p className="text-[13px] text-gray-600">No password now. We’ll email your receipt and a link to finish setting up your account.</p>}
+      {p.mode !== 'guest' && oauth}
 
       <div className="grid gap-4 sm:grid-cols-2">
         <TextField
-          label="Email address"
+          label="Email"
           type="email"
           inputMode="email"
           autoComplete={p.mode === 'login' ? 'username' : 'email'}
@@ -161,7 +158,7 @@ export function AuthPanel(p: AuthPanelProps) {
               onBlur={() => setPwTouched(true)}
               error={showPwErr ? pwErr : ''}
               trailing={
-                <button type="button" onClick={() => setShowPw((s) => !s)} className="min-h-11 rounded-md px-3 text-sm font-semibold text-brand-700 hover:bg-brand-50 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:outline-none" aria-label={showPw ? 'Hide password' : 'Show password'}>
+                <button type="button" onClick={() => setShowPw((s) => !s)} className="min-h-11 rounded-md px-3 text-[13px] font-medium text-brand-700 hover:bg-brand-50 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:outline-none sm:min-h-8" aria-label={showPw ? 'Hide password' : 'Show password'}>
                   {showPw ? 'Hide' : 'Show'}
                 </button>
               }
@@ -175,16 +172,11 @@ export function AuthPanel(p: AuthPanelProps) {
         <div className="space-y-3">
           {p.loginError && <Notice tone="error">{p.loginError}</Notice>}
           {resetSent && <Notice tone="success">If an account exists for {p.email}, a reset link is on its way.</Notice>}
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-3">
             <Button type="button" onClick={p.onLogin} loading={p.loggingIn}>Log in</Button>
-            <Button
-              variant="ghost"
-              onClick={() => { setEmailTouched(true); if (!emailErr) setResetSent(true); }}
-            >
-              Forgot password?
-            </Button>
+            <TextButton onClick={() => { setEmailTouched(true); if (!emailErr) setResetSent(true); }}>Forgot password?</TextButton>
           </div>
-          <p className="text-xs text-gray-600">Demo account: <span className="font-mono">{DEMO_PROFILE.email}</span> / <span className="font-mono">{DEMO_PASSWORD}</span></p>
+          <p className="text-xs text-gray-500">Demo: <span className="font-mono">{DEMO_PROFILE.email}</span> / <span className="font-mono">{DEMO_PASSWORD}</span></p>
         </div>
       )}
     </div>
@@ -196,7 +188,7 @@ const LABEL_COLORS = ['text-gray-600', 'text-red-700', 'text-accent-800', 'text-
 
 export function StrengthMeter({ value }: { value: string }) {
   const s = v.passwordStrength(value);
-  if (!value) return <p className="mt-1.5 text-sm text-gray-600">At least 8 characters. Mix letters, numbers and symbols.</p>;
+  if (!value) return <p className="mt-1.5 text-xs text-gray-500">At least 8 characters, mixing letters, numbers and symbols.</p>;
   return (
     <div className="mt-2" aria-live="polite">
       <div className="flex gap-1" aria-hidden="true">
@@ -204,8 +196,8 @@ export function StrengthMeter({ value }: { value: string }) {
           <span key={i} className={cx('h-1.5 flex-1 rounded-full transition-colors', i <= s.score ? BAR_COLORS[s.score] : 'bg-gray-200')} />
         ))}
       </div>
-      <p className="mt-1 text-sm">
-        Password strength: <strong className={LABEL_COLORS[s.score]}>{s.label}</strong>
+      <p className="mt-1 text-[13px] text-gray-700">
+        Strength: <span className={cx('font-medium', LABEL_COLORS[s.score])}>{s.label}</span>
       </p>
       <ul className="mt-1 grid grid-cols-1 gap-x-3 gap-y-0.5 text-xs sm:grid-cols-2">
         {s.checks.map((c) => (
