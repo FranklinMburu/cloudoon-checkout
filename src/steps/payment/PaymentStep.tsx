@@ -1,42 +1,39 @@
-import { useState, type FormEvent, type ReactNode } from 'react';
-import { COUNTRIES } from '../../data/catalog';
-import { money } from '../../lib/format';
+import { useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { ApiError, api } from '../../api/client';
+import { tokenizeCard } from '../../api/paymentProvider';
+import type { PaymentInput } from '../../api/types';
+import { toNumber } from '../../lib/format';
 import * as v from '../../lib/validation';
 import { useStore } from '../../state/store';
-import type { Quote } from '../../types';
+import { useMoney } from '../../state/useMoney';
 import { Card, Lock, Phone } from '../../components/icons';
 import { Button, Notice, RadioCard, Section, TextButton, TextField } from '../../components/ui';
 
-type Method = 'card' | 'mpesa' | 'paypal';
-
-export interface PlacedOrder {
-  number: string;
-  email: string;
-  method: string;
-  quote: Quote;
-  currency: string;
-}
-
-const DECLINE_CARD = '4000000000000002';
+type Method = PaymentInput['method'];
 
 function addMonths(months: number) {
   const d = new Date();
+  const day = d.getDate();
+  d.setDate(1);
   d.setMonth(d.getMonth() + months);
+  d.setDate(Math.min(day, new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate())); // 31 Jan + 1 mo → 28/29 Feb
   return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
 /** Step 3 — how to pay, plus a final, explicit review of every charge. */
-export function PaymentStep({ onPlaced }: { onPlaced: (o: PlacedOrder) => void }) {
-  const { cart, quote, checkout, setStep } = useStore();
-  const cur = cart.currency;
-  const [method, setMethod] = useState<Method>(cur === 'KES' || cart.country === 'KE' ? 'mpesa' : 'card');
-  const [card, setCard] = useState({ number: '', expiry: '', cvc: '', name: checkout.billing.fullName });
+export function PaymentStep() {
+  const { cart, catalog, quote, quoting, checkout, setStep, completeOrder } = useStore();
+  const { fmt, fmtPrecise, currency } = useMoney();
+  const [method, setMethod] = useState<Method>(currency === 'KES' || cart.country === 'KE' ? 'mpesa' : 'card');
+  const [card, setCard] = useState({ number: '', expiry: '', cvc: '', name: checkout.billing.full_name });
   const [mpesa, setMpesa] = useState(checkout.billing.phone);
   const [agree, setAgree] = useState(false);
   const [touched, setTouched] = useState<Record<string, boolean>>({});
   const [submitted, setSubmitted] = useState(false);
   const [processing, setProcessing] = useState(false);
-  const [declined, setDeclined] = useState('');
+  const [failure, setFailure] = useState('');
+  // One key per checkout attempt: retries, double clicks and refreshes can never create a second order.
+  const idempotencyKey = useRef(crypto.randomUUID());
 
   const errors: Record<string, string> =
     method === 'card'
@@ -48,33 +45,34 @@ export function PaymentStep({ onPlaced }: { onPlaced: (o: PlacedOrder) => void }
   const touch = (k: string) => () => setTouched((t) => ({ ...t, [k]: true }));
   const brand = v.cardBrand(card.number);
 
-  const submit = (e: FormEvent) => {
+  const submit = async (e: FormEvent) => {
     e.preventDefault();
     setSubmitted(true);
-    setDeclined('');
+    setFailure('');
     if (Object.values(errors).some(Boolean) || !agree) {
       requestAnimationFrame(() => document.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus());
       return;
     }
+    const payment: PaymentInput =
+      method === 'card' ? { method, ...tokenizeCard(card.number) } : method === 'mpesa' ? { method, phone: mpesa } : { method };
+    const { is_business, ...billing } = checkout.billing;
     setProcessing(true);
-    setTimeout(() => {
-      if (method === 'card' && card.number.replace(/\D/g, '') === DECLINE_CARD) {
-        setProcessing(false);
-        setDeclined('Your bank declined this card. No money was taken. Try another card or pay with M-Pesa or PayPal.');
-        return;
-      }
-      onPlaced({
-        number: `CL-${Math.floor(100000 + Math.random() * 900000)}`,
-        email: checkout.account?.email ?? checkout.billing.email,
-        method: method === 'card' ? `${brand ?? 'Card'} ending ${card.number.replace(/\D/g, '').slice(-4)}` : method === 'mpesa' ? `M-Pesa ${mpesa}` : 'PayPal',
-        quote,
-        currency: cur,
-      });
-    }, method === 'mpesa' ? 2200 : 1600);
+    try {
+      const order = await api.createOrder(
+        { cart, billing: { ...billing, company: is_business ? billing.company : '', tax_id: is_business ? billing.tax_id : '' }, payment, accept_terms: agree },
+        idempotencyKey.current,
+      );
+      completeOrder(order);
+    } catch (err) {
+      setFailure(err instanceof ApiError ? err.message : 'Payment failed. No money was taken. Please try again.');
+      setProcessing(false);
+    }
   };
 
   const b = checkout.billing;
-  const country = COUNTRIES.find((c) => c.code === b.country)?.name;
+  const country = catalog.countries.find((c) => c.code === b.country)?.name;
+  if (!quote) return null;
+  const hasCloudBurst = cart.category === 'cloud' && quote.cloud_burst_hourly;
 
   return (
     <form onSubmit={submit} noValidate className="space-y-3 sm:space-y-4">
@@ -112,7 +110,7 @@ export function PaymentStep({ onPlaced }: { onPlaced: (o: PlacedOrder) => void }
           {method === 'mpesa' && (
             <div className="space-y-3">
               <TextField label="M-Pesa phone number" type="tel" inputMode="tel" autoComplete="tel" value={mpesa} onChange={setMpesa} onBlur={touch('mpesa')} error={show('mpesa')} placeholder="0712 345 678" />
-              <Notice>You’ll get a prompt on this phone to approve {money(quote.total, cur)}{cur !== 'KES' && ' (charged in KES at today’s rate)'}.</Notice>
+              <Notice>You’ll get a prompt on this phone to approve {fmt(quote.total)}{currency !== 'KES' && ' (charged in KES at today’s rate)'}.</Notice>
             </div>
           )}
           {method === 'paypal' && <Notice>PayPal opens in a pop-up when you continue, then brings you back here.</Notice>}
@@ -128,28 +126,34 @@ export function PaymentStep({ onPlaced }: { onPlaced: (o: PlacedOrder) => void }
                 <div className="min-w-0">
                   <p className="text-sm font-medium break-words text-gray-950">{l.title}</p>
                   <p className="text-xs text-gray-500 tabular-nums">
-                    {l.termLabel !== '—' ? `${l.termLabel}` : 'No charge'}
-                    {l.renewal && (l.autoRenew === false
+                    {l.term_label !== '—' ? l.term_label : 'No charge'}
+                    {l.renewal && (l.auto_renew === false
                       ? <> · Expires {addMonths(months)}</>
-                      : <> · Then {money(l.renewal.amount, cur)} on {addMonths(months)}</>)}
+                      : <> · Then {fmt(l.renewal.amount)} on {addMonths(months)}</>)}
                   </p>
                 </div>
-                <span className="shrink-0 text-sm text-gray-950 tabular-nums">{l.dueToday === 0 ? 'Free' : money(l.dueToday, cur)}</span>
+                <span className="shrink-0 text-sm text-gray-950 tabular-nums">{toNumber(l.due_today) === 0 ? 'Free' : fmt(l.due_today)}</span>
               </li>
             );
           })}
         </ul>
         <dl className="mt-3 space-y-1.5 text-[13px]">
-          <div className="flex justify-between"><dt className="text-gray-600">Subtotal</dt><dd className="tabular-nums">{money(quote.subtotal, cur)}</dd></div>
-          {quote.promo && <div className="flex justify-between"><dt className="text-gray-600">Promo ({quote.promo.code})</dt><dd className="text-green-700 tabular-nums">−{money(quote.promo.amount, cur)}</dd></div>}
-          <div className="flex justify-between"><dt className="text-gray-600">Tax · {quote.taxLabel}</dt><dd className="tabular-nums">{money(quote.tax, cur)}</dd></div>
-          <div className="flex justify-between border-t border-gray-200 pt-2 text-sm font-semibold text-gray-950"><dt>Due today</dt><dd className="tabular-nums">{money(quote.total, cur)}</dd></div>
+          <div className="flex justify-between"><dt className="text-gray-600">Subtotal</dt><dd className="tabular-nums">{fmt(quote.subtotal)}</dd></div>
+          {quote.promo && <div className="flex justify-between"><dt className="text-gray-600">Promo ({quote.promo.code}), first term only</dt><dd className="text-green-700 tabular-nums">−{fmt(quote.promo.amount)}</dd></div>}
+          <div className="flex justify-between"><dt className="text-gray-600">Tax · {quote.tax_label}</dt><dd className="tabular-nums">{fmt(quote.tax)}</dd></div>
+          <div className="flex justify-between border-t border-gray-200 pt-2 text-sm font-semibold text-gray-950"><dt>Due today</dt><dd className="tabular-nums">{fmt(quote.total)}</dd></div>
         </dl>
+        {(quote.promo || hasCloudBurst) && (
+          <ul className="mt-3 space-y-1 text-xs text-gray-600">
+            {quote.promo && <li>Renewal prices above don’t include the promo discount.</li>}
+            {hasCloudBurst && <li>Autoscaling: extra instances cost {fmtPrecise(quote.cloud_burst_hourly!)}/hour each while running, billed monthly.</li>}
+          </ul>
+        )}
 
         <dl className="mt-4 grid gap-3 rounded-lg bg-gray-50 p-3 text-[13px] sm:grid-cols-2">
           <ReviewItem label="Account" onEdit={() => setStep(2)}>{checkout.account?.email ?? b.email}</ReviewItem>
           <ReviewItem label="Billing address" onEdit={() => setStep(2)}>
-            {b.fullName}{b.isBusiness && b.company ? `, ${b.company}` : ''}, {b.address}, {b.city} {b.postalCode}, {country}
+            {b.full_name}{b.is_business && b.company ? `, ${b.company}` : ''}, {b.address}, {b.city} {b.postal_code}, {country}
           </ReviewItem>
         </dl>
 
@@ -169,14 +173,14 @@ export function PaymentStep({ onPlaced }: { onPlaced: (o: PlacedOrder) => void }
           </label>
           {submitted && !agree && <p id="agree-error" role="alert" className="-mt-2 text-[13px] text-red-700">Please accept the terms to continue.</p>}
 
-          {declined && <Notice tone="error">{declined}</Notice>}
+          {failure && <Notice tone="error">{failure}</Notice>}
 
-          <Button type="submit" variant="accent" size="lg" fullWidth loading={processing}>
+          <Button type="submit" variant="accent" size="lg" fullWidth loading={processing} disabled={quoting}>
             {processing
               ? method === 'mpesa' ? 'Waiting for M-Pesa approval…' : 'Processing…'
-              : <><Lock size={16} /> {method === 'paypal' ? 'Continue to PayPal' : `Pay ${money(quote.total, cur)}`}</>}
+              : <><Lock size={16} /> {method === 'paypal' ? 'Continue to PayPal' : `Pay ${fmt(quote.total)}`}</>}
           </Button>
-          <p className="text-center text-xs text-gray-500">Encrypted payment. We never store your full card number.</p>
+          <p className="text-center text-xs text-gray-500">Encrypted payment. Your card number goes to the payment provider, never to our servers.</p>
         </div>
       </Section>
     </form>

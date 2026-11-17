@@ -1,24 +1,41 @@
 // The persistent order summary: a sticky sidebar on desktop, a bottom bar + sheet on mobile.
-// It reads straight from the pricing engine, so it is always in sync.
+// Every amount is the server's quote; the client never computes money.
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { checkPromo } from '../lib/pricing';
-import { money } from '../lib/format';
+import { ApiError, api } from '../api/client';
+import type { LineItem } from '../api/types';
+import { toNumber } from '../lib/format';
 import { useStore } from '../state/store';
-import type { LineItem } from '../types';
-import { ChevronUp, Lock, Tag, X } from './icons';
-import { Badge, Button, FlashValue, TextButton, cx, focusRing, inputClass } from './ui';
+import { useMoney } from '../state/useMoney';
+import { ChevronUp, Lock, Spinner, Tag, X } from './icons';
+import { Badge, Button, FlashValue, Notice, Skeleton, TextButton, cx, focusRing, inputClass } from './ui';
 
 export function OrderSummary({ cta, onEditHosting }: { cta?: ReactNode; onEditHosting?: () => void }) {
-  const { quote, cart } = useStore();
-  const cur = cart.currency;
-  const saved = quote.savings + (quote.promo?.amount ?? 0);
+  const { quote, quoting, quoteError, checkout, cart, update } = useStore();
+  const { fmt, currency } = useMoney();
+
+  if (!quote) return <SummarySkeleton />;
+  const saved = toNumber(quote.savings) + toNumber(quote.promo?.amount);
+  const taxIsEstimate = checkout.step === 1;
 
   return (
     <div className="flex flex-col">
-      <h2 className="text-base font-semibold text-gray-950">Order summary</h2>
+      <div className="flex items-center justify-between">
+        <h2 className="text-base font-semibold text-gray-950">Order summary</h2>
+        {quoting && (
+          <span className="flex items-center gap-1.5 text-xs text-gray-500" role="status">
+            <Spinner size={12} /> Updating
+          </span>
+        )}
+      </div>
 
-      <ul className="mt-3 divide-y divide-gray-100 border-y border-gray-100">
+      {quoteError && (
+        <Notice tone="error" className="mt-3">
+          {quoteError} <button type="button" className="font-medium underline" onClick={() => update({ ...cart })}>Retry</button>
+        </Notice>
+      )}
+
+      <ul className={cx('mt-3 divide-y divide-gray-100 border-y border-gray-100 transition-opacity', quoting && 'opacity-70')}>
         {quote.lines.map((line) => (
           <SummaryLine key={line.id} line={line} onEditHosting={onEditHosting} />
         ))}
@@ -29,25 +46,36 @@ export function OrderSummary({ cta, onEditHosting }: { cta?: ReactNode; onEditHo
       </div>
 
       <dl className="space-y-1.5 border-t border-gray-100 pt-3 text-[13px]">
-        <Row label="Subtotal" value={money(quote.subtotal, cur)} />
-        {quote.promo && <Row label={`Promo (${quote.promo.code})`} value={`−${money(quote.promo.amount, cur)}`} valueClass="text-green-700" />}
-        <Row label={`Tax · ${quote.taxLabel}`} value={money(quote.tax, cur)} />
+        <Row label="Subtotal" value={fmt(quote.subtotal)} />
+        {quote.promo && <Row label={`Promo (${quote.promo.code}), first term`} value={`−${fmt(quote.promo.amount)}`} valueClass="text-green-700" />}
+        <Row label={`${taxIsEstimate ? 'Estimated tax' : 'Tax'} · ${quote.tax_label}`} value={fmt(quote.tax)} />
       </dl>
 
       <div className="mt-3 flex items-baseline justify-between gap-2 border-t border-gray-200 pt-3">
         <span className="text-sm font-medium text-gray-950">Due today</span>
         <span aria-live="polite" className="text-xl font-semibold tracking-tight text-gray-950 tabular-nums">
-          <FlashValue value={`${quote.total}-${cur}`}>{money(quote.total, cur)}</FlashValue>
+          <FlashValue value={`${quote.total}-${currency}`}>{fmt(quote.total)}</FlashValue>
         </span>
       </div>
-      {saved > 0 && <p className="text-right text-[13px] text-green-700 tabular-nums">You save {money(saved, cur)}</p>}
+      {saved > 0 && <p className="text-right text-[13px] text-green-700 tabular-nums">You save {fmt(saved)}</p>}
 
       {cta && <div className="mt-4">{cta}</div>}
 
       <p className="mt-3 flex items-start gap-1.5 text-xs text-gray-500">
         <Lock size={13} className="mt-px shrink-0" />
-        <span>Prices in {cur}. No setup fees. Renewal prices are shown for each item, and auto-renew can be turned off anytime.</span>
+        <span>Prices in {currency}. No setup fees. Each item shows its renewal price; auto-renew can be turned off anytime.</span>
       </p>
+    </div>
+  );
+}
+
+function SummarySkeleton() {
+  return (
+    <div className="space-y-3" aria-busy="true" aria-label="Loading order summary">
+      <Skeleton className="h-5 w-32" />
+      <Skeleton className="h-14 w-full" />
+      <Skeleton className="h-4 w-24" />
+      <Skeleton className="h-10 w-full" />
     </div>
   );
 }
@@ -56,39 +84,39 @@ function Row({ label, value, valueClass }: { label: ReactNode; value: string; va
   return (
     <div className="flex justify-between gap-3">
       <dt className="text-gray-600">{label}</dt>
-      <dd className={cx('text-gray-950 tabular-nums', valueClass)}>{value}</dd>
+      <dd className={cx('shrink-0 text-gray-950 tabular-nums', valueClass)}>{value}</dd>
     </div>
   );
 }
 
 function SummaryLine({ line, onEditHosting }: { line: LineItem; onEditHosting?: () => void }) {
-  const { cart, removeLine } = useStore();
-  const cur = cart.currency;
-  const discounted = line.regularPrice > line.dueToday;
+  const { removeLine } = useStore();
+  const { fmt } = useMoney();
+  const discounted = toNumber(line.regular_price) > toNumber(line.due_today);
 
   return (
     <li className="py-3">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-sm font-medium break-words text-gray-950">{line.title}</p>
-          <p className="text-xs text-gray-500">
-            {line.details[0]}
-            {line.termLabel !== '—' && <> · {line.termLabel}</>}
+          <p className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-sm font-medium break-words text-gray-950">
+            {line.title}
+            {line.badge && <Badge tone={line.kind === 'hosting' ? 'accent' : 'success'}>{line.badge}</Badge>}
           </p>
+          <p className="text-xs text-gray-500">{line.details[0]}</p>
         </div>
         <div className="shrink-0 text-right tabular-nums">
-          <p className="text-sm font-medium text-gray-950">{line.dueToday === 0 ? 'Free' : money(line.dueToday, cur)}</p>
-          {discounted && <p className="text-xs text-gray-400 line-through">{money(line.regularPrice, cur)}</p>}
+          <p className="text-sm font-medium text-gray-950">{toNumber(line.due_today) === 0 ? 'Free' : fmt(line.due_today)}</p>
+          {discounted && <p className="text-xs text-gray-500 line-through">{fmt(line.regular_price)}</p>}
+          {line.term_label !== '—' && <p className="text-xs text-gray-500">{line.term_label}</p>}
         </div>
       </div>
 
       <div className="mt-1 flex items-center justify-between gap-2">
-        <p className="flex flex-wrap items-center gap-1.5 text-xs text-gray-500 tabular-nums">
-          {line.badge && <Badge tone={line.kind === 'hosting' ? 'accent' : 'success'}>{line.badge}</Badge>}
+        <p className="text-xs text-gray-500 tabular-nums">
           {line.renewal
-            ? line.autoRenew === false
-              ? <>Auto-renew off</>
-              : <>Renews at {money(line.renewal.amount, cur)} {line.renewal.label}</>
+            ? line.auto_renew === false
+              ? 'Auto-renew off'
+              : <>Renews at {fmt(line.renewal.amount)} {line.renewal.label}</>
             : 'No recurring charge'}
         </p>
         {line.kind === 'hosting' && onEditHosting && <TextButton onClick={onEditHosting}>Change</TextButton>}
@@ -107,32 +135,31 @@ function PromoCode() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  if (quote.promo) {
+  if (quote?.promo) {
     return (
       <div className="flex items-center justify-between gap-2 text-[13px]">
         <span className="flex min-w-0 items-center gap-1.5 text-green-700">
           <Tag size={14} className="shrink-0" /> <span className="truncate"><span className="font-medium">{quote.promo.code}</span> · {quote.promo.label}</span>
         </span>
-        <TextButton tone="muted" onClick={() => update({ promoCode: null })}>Remove</TextButton>
+        <TextButton tone="muted" onClick={() => update({ promo_code: null })}>Remove</TextButton>
       </div>
     );
   }
 
-  if (!open) {
-    return <TextButton onClick={() => setOpen(true)}>Add promo code</TextButton>;
-  }
+  if (!open) return <TextButton onClick={() => setOpen(true)}>Add promo code</TextButton>;
 
-  const apply = () => {
+  const apply = async () => {
     setLoading(true);
     setError('');
-    setTimeout(() => {
-      const res = checkPromo(code);
+    try {
+      const promo = await api.validatePromo(code);
+      update({ promo_code: promo.code });
+      setCode('');
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Something went wrong.');
+    } finally {
       setLoading(false);
-      if (res.ok) {
-        update({ promoCode: res.promo.code });
-        setCode('');
-      } else setError(res.error);
-    }, 500);
+    }
   };
 
   return (
@@ -144,19 +171,15 @@ function PromoCode() {
           value={code}
           autoFocus
           onChange={(e) => { setCode(e.target.value.toUpperCase()); setError(''); }}
-          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); apply(); } }}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); if (code.trim()) apply(); } }}
           placeholder="Promo code"
           aria-invalid={!!error || undefined}
-          aria-describedby={error ? 'promo-error' : 'promo-hint'}
+          aria-describedby={error ? 'promo-error' : undefined}
           className={inputClass(!!error, 'uppercase')}
         />
         <Button variant="secondary" onClick={apply} loading={loading} disabled={!code.trim()}>Apply</Button>
       </div>
-      {error ? (
-        <p id="promo-error" role="alert" className="mt-1.5 text-[13px] text-red-700">{error}</p>
-      ) : (
-        <p id="promo-hint" className="mt-1.5 text-xs text-gray-500">Try WELCOME10 or HOSTING25</p>
-      )}
+      {error && <p id="promo-error" role="alert" className="mt-1.5 text-[13px] text-red-700">{error}</p>}
     </div>
   );
 }
@@ -164,9 +187,11 @@ function PromoCode() {
 /* ------------------------------ Mobile bar ----------------------------- */
 
 export function MobileSummaryBar({ cta, onEditHosting }: { cta?: ReactNode; onEditHosting?: () => void }) {
-  const { quote, cart } = useStore();
+  const { quote } = useStore();
+  const { fmt, currency } = useMoney();
   const [open, setOpen] = useState(false);
   const closeRef = useRef<HTMLButtonElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -174,9 +199,11 @@ export function MobileSummaryBar({ cta, onEditHosting }: { cta?: ReactNode; onEd
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
     document.addEventListener('keydown', onKey);
     document.body.style.overflow = 'hidden';
+    const trigger = triggerRef.current;
     return () => {
       document.removeEventListener('keydown', onKey);
       document.body.style.overflow = '';
+      trigger?.focus(); // return focus to where the sheet was opened from
     };
   }, [open]);
 
@@ -185,6 +212,7 @@ export function MobileSummaryBar({ cta, onEditHosting }: { cta?: ReactNode; onEd
       <div className="fixed inset-x-0 bottom-0 z-30 border-t border-gray-200 bg-white px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] lg:hidden">
         <div className="flex items-center gap-3">
           <button
+            ref={triggerRef}
             type="button"
             onClick={() => setOpen(true)}
             aria-haspopup="dialog"
@@ -194,7 +222,7 @@ export function MobileSummaryBar({ cta, onEditHosting }: { cta?: ReactNode; onEd
               Due today · <span className="font-medium text-brand-700">Details</span> <ChevronUp size={12} className="text-brand-700" />
             </span>
             <span className="text-lg leading-6 font-semibold text-gray-950 tabular-nums">
-              <FlashValue value={`${quote.total}-${cart.currency}`}>{money(quote.total, cart.currency)}</FlashValue>
+              {quote ? <FlashValue value={`${quote.total}-${currency}`}>{fmt(quote.total)}</FlashValue> : <Skeleton className="mt-1 h-5 w-24" />}
             </span>
           </button>
           {cta && <div className="w-40 shrink-0">{cta}</div>}

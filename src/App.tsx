@@ -4,12 +4,12 @@ import { ArrowLeft, ArrowRight } from './components/icons';
 import { MobileSummaryBar, OrderSummary } from './components/OrderSummary';
 import { Button, TextButton } from './components/ui';
 import { DesignSystem } from './DesignSystem';
-import { useStore } from './state/store';
+import { useStore, type Step } from './state/store';
 import { AccountStep, CHECKOUT_FORM_ID } from './steps/account/AccountStep';
+import type { AuthMode } from './steps/account/AuthPanel';
 import { Confirmation } from './steps/Confirmation';
 import { ConfigureStep } from './steps/configure/ConfigureStep';
-import { PaymentStep, type PlacedOrder } from './steps/payment/PaymentStep';
-import type { Step } from './types';
+import { PaymentStep } from './steps/payment/PaymentStep';
 
 const STEP_COPY: Record<Step, { title: string; intro: string }> = {
   1: { title: 'Configure your order', intro: 'Choose your hosting, billing period and extras.' },
@@ -28,9 +28,10 @@ function useHashRoute() {
 }
 
 export default function App() {
-  const { checkout, setStep, resetAll } = useStore();
+  const { checkout, quote, setStep, resetAll } = useStore();
   const step = checkout.step;
-  const [order, setOrder] = useState<PlacedOrder | null>(null);
+  const order = checkout.order;
+  const [authMode, setAuthMode] = useState<AuthMode>('signup');
   const headingRef = useRef<HTMLHeadingElement>(null);
   const firstRender = useRef(true);
   const route = useHashRoute();
@@ -57,7 +58,7 @@ export default function App() {
       <div className="min-h-screen bg-gray-50">
         <Header showCurrency={false} />
         <main>
-          <Confirmation order={order} onNewOrder={() => { resetAll(); setOrder(null); }} />
+          <Confirmation order={order} onNewOrder={resetAll} />
         </main>
       </div>
     );
@@ -72,10 +73,11 @@ export default function App() {
   // Step 3's "Pay" button sits directly under the terms checkbox instead.
   const makeCta = (compact: boolean) =>
     step === 1 ? (
-      <Button variant="accent" size="lg" fullWidth onClick={() => setStep(2)}>
+      <Button variant="accent" size="lg" fullWidth onClick={() => setStep(2)} disabled={!quote}>
         {compact ? 'Continue' : 'Continue to account'} <ArrowRight size={16} />
       </Button>
-    ) : step === 2 ? (
+    ) : step === 2 && !(authMode === 'login' && !checkout.account) ? (
+      // On the Log in tab the form's own "Log in" button is the only action, so this one is hidden.
       <Button variant="accent" size="lg" fullWidth type="submit" form={CHECKOUT_FORM_ID}>
         {compact ? 'Continue' : 'Continue to payment'} <ArrowRight size={16} />
       </Button>
@@ -105,8 +107,8 @@ export default function App() {
 
           <div className="space-y-4">
             {step === 1 && <ConfigureStep />}
-            {step === 2 && <AccountStep />}
-            {step === 3 && <PaymentStep onPlaced={setOrder} />}
+            {step === 2 && <AccountStep onModeChange={setAuthMode} />}
+            {step === 3 && <PaymentStep />}
           </div>
         </main>
 
@@ -122,7 +124,7 @@ export default function App() {
           <p>© {new Date().getFullYear()} Cloudoon · Checkout prototype</p>
           <div className="flex flex-wrap gap-x-4">
             <a className="inline-flex min-h-11 items-center text-brand-700 hover:underline sm:min-h-8" href="#design-system">Design system & UI states</a>
-            <button type="button" className="inline-flex min-h-11 items-center hover:text-gray-900 hover:underline sm:min-h-8" onClick={() => { resetAll(); setOrder(null); }}>
+            <button type="button" className="inline-flex min-h-11 items-center hover:text-gray-900 hover:underline sm:min-h-8" onClick={resetAll}>
               Reset prototype
             </button>
           </div>

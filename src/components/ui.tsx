@@ -86,8 +86,9 @@ export function TextButton({ children, tone = 'brand', className, ...rest }: But
 
 type Tone = 'accent' | 'brand' | 'success' | 'neutral' | 'danger';
 
+// Promo and discount flags use a light amber so solid amber stays reserved for the conversion button.
 const badgeTones: Record<Tone, string> = {
-  accent: 'bg-accent-400 text-gray-950',
+  accent: 'bg-accent-100 text-accent-900 ring-1 ring-inset ring-accent-300',
   brand: 'bg-brand-50 text-brand-700',
   success: 'bg-green-50 text-green-800',
   neutral: 'bg-gray-100 text-gray-700',
@@ -125,6 +126,41 @@ export function Section({ id, title, description, aside, children }: { id?: stri
   );
 }
 
+/** A section that stays a one-line summary until opened (progressive disclosure). */
+export function CollapsibleSection({
+  id, title, summary, open, onToggle, badge, children,
+}: { id: string; title: string; summary: ReactNode; open: boolean; onToggle: () => void; badge?: ReactNode; children: ReactNode }) {
+  const panelId = `${id}-panel`;
+  return (
+    <section id={id} aria-labelledby={`${id}-title`} className="-mx-4 scroll-mt-20 border-y border-gray-200 bg-white sm:mx-0 sm:rounded-xl sm:border">
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={open}
+        aria-controls={panelId}
+        className={cx('flex w-full items-center gap-3 px-4 py-4 text-left hover:bg-gray-50/60 sm:rounded-xl sm:px-6 sm:py-5', focusRing, open && 'sm:rounded-b-none')}
+      >
+        <span className="min-w-0 flex-1">
+          <span className="flex flex-wrap items-center gap-2">
+            <span id={`${id}-title`} className="text-base font-semibold text-gray-950">{title}</span>
+            {badge}
+          </span>
+          <span className="mt-0.5 block truncate text-[13px] text-gray-600">{summary}</span>
+        </span>
+        <span className="flex shrink-0 items-center gap-1 text-[13px] font-medium text-brand-700">
+          {open ? 'Hide' : 'Edit'}
+          <ChevronDown size={16} className={cx('transition-transform', open && 'rotate-180')} />
+        </span>
+      </button>
+      {open && (
+        <div id={panelId} className="px-4 pb-5 sm:px-6 sm:pb-6">
+          {children}
+        </div>
+      )}
+    </section>
+  );
+}
+
 export function SubHeading({ children, hint }: { children: ReactNode; hint?: ReactNode }) {
   return (
     <div className="mb-2.5 flex items-baseline justify-between gap-3">
@@ -150,7 +186,7 @@ interface SwitchProps {
 export function Switch({ checked, onChange, label, description, price, disabled, bordered }: SwitchProps) {
   const id = useId();
   return (
-    <div className={cx('flex items-center gap-3 py-3', bordered && 'rounded-lg border border-gray-200 px-3', disabled && 'opacity-60')}>
+    <div className={cx('flex items-center gap-3 py-3', bordered && 'rounded-lg border border-gray-200 px-3 hover:border-gray-300', disabled && 'opacity-60')}>
       <label htmlFor={id} className={cx('min-w-0 flex-1', disabled ? 'cursor-not-allowed' : 'cursor-pointer')}>
         <span className="block text-sm font-medium text-gray-950">{label}</span>
         {description && <span className="mt-0.5 block text-[13px] text-gray-600">{description}</span>}
@@ -200,7 +236,7 @@ export function RadioCard({ name, value, checked, onChange, disabled, children, 
         'relative flex min-h-11 gap-3 rounded-lg border bg-white p-3 transition-colors',
         'has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-brand-600 has-[:focus-visible]:ring-offset-1',
         checked ? 'border-brand-600 bg-brand-50/40 ring-1 ring-brand-600' : 'border-gray-200',
-        disabled ? 'cursor-not-allowed bg-gray-50 opacity-60' : 'cursor-pointer hover:border-gray-400',
+        disabled ? 'cursor-not-allowed bg-gray-50 opacity-60' : 'cursor-pointer hover:border-gray-400 active:bg-gray-50',
         checked && !disabled && 'hover:border-brand-600',
         className,
       )}
@@ -237,7 +273,7 @@ export function Segmented<T extends string>({ label, value, options, onChange, f
         <label
           key={o.value}
           className={cx(
-            'flex min-h-10 flex-1 cursor-pointer items-center justify-center rounded-md px-2 text-center text-[13px] font-medium transition-colors sm:min-h-8',
+            'flex min-h-11 flex-1 cursor-pointer items-center justify-center rounded-md px-2 text-center text-[13px] font-medium transition-colors sm:min-h-8',
             'has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-brand-600',
             value === o.value ? 'bg-white text-gray-950 shadow-sm ring-1 ring-gray-200' : 'text-gray-600 hover:text-gray-950',
             o.disabled && 'cursor-not-allowed opacity-50',

@@ -1,21 +1,15 @@
 import { useState } from 'react';
+import { ApiError, api } from '../../api/client';
+import type { Account } from '../../api/types';
 import * as v from '../../lib/validation';
 import { useStore } from '../../state/store';
-import type { Account, AuthMode } from '../../types';
 import { Check, GitHubMark, GoogleMark, Key } from '../../components/icons';
 import { Button, Notice, Segmented, TextButton, TextField, cx } from '../../components/ui';
 
-/** Demo identities returned by the mocked OAuth / login calls. */
-export const DEMO_PROFILE = {
-  name: 'Amina Wanjiru',
-  email: 'demo@cloudoon.com',
-  phone: '+254 712 345 678',
-  address: 'Westlands Road, The Mirage Tower 2',
-  city: 'Nairobi',
-  postalCode: '00800',
-  country: 'KE',
-};
-export const DEMO_PASSWORD = 'Demo1234!';
+export type AuthMode = 'signup' | 'guest' | 'login';
+
+/** Shown so reviewers can try the returning-customer path; the account is created by `manage.py seed`. */
+export const DEMO_LOGIN = { email: 'demo@cloudoon.com', password: 'Demo1234!' };
 
 interface AuthPanelProps {
   mode: AuthMode;
@@ -30,27 +24,19 @@ interface AuthPanelProps {
   onLogin: () => void;
 }
 
-/** Signs the demo user in and pre-fills empty billing fields. The cart is untouched. */
+/** Stores the signed-in account and fills empty billing fields from it. The cart is untouched. */
 export function useSignIn() {
   const { checkout, setAccount, setBilling } = useStore();
-  return (provider: Account['provider'], email = DEMO_PROFILE.email) => {
-    setAccount({ name: DEMO_PROFILE.name, email, provider });
-    const b = checkout.billing;
-    setBilling({
-      fullName: b.fullName || DEMO_PROFILE.name,
-      email,
-      phone: b.phone || DEMO_PROFILE.phone,
-      address: b.address || DEMO_PROFILE.address,
-      city: b.city || DEMO_PROFILE.city,
-      postalCode: b.postalCode || DEMO_PROFILE.postalCode,
-      country: b.address ? b.country : DEMO_PROFILE.country,
-    });
+  return (account: Account) => {
+    setAccount(account);
+    setBilling({ email: account.email, full_name: checkout.billing.full_name || (account.name !== account.email ? account.name : '') });
   };
 }
 
 export function AuthPanel(p: AuthPanelProps) {
   const completeSignIn = useSignIn();
   const [oauthLoading, setOauthLoading] = useState<Account['provider'] | null>(null);
+  const [oauthError, setOauthError] = useState('');
   const [ssoOpen, setSsoOpen] = useState(false);
   const [ssoEmail, setSsoEmail] = useState('');
   const [ssoTouched, setSsoTouched] = useState(false);
@@ -59,13 +45,17 @@ export function AuthPanel(p: AuthPanelProps) {
   const [showPw, setShowPw] = useState(false);
   const [resetSent, setResetSent] = useState(false);
 
-  const signIn = (provider: Account['provider'], email = DEMO_PROFILE.email) => {
+  // Simulated OAuth (see backend accounts/views.py): no page change, so the cart stays put.
+  const signIn = async (provider: 'google' | 'github' | 'sso', email?: string) => {
     setOauthLoading(provider);
-    // Simulated OAuth pop-up round-trip: no page change, so the cart stays put.
-    setTimeout(() => {
-      completeSignIn(provider, email);
+    setOauthError('');
+    try {
+      completeSignIn(await api.oauth(provider, email));
+    } catch (err) {
+      setOauthError(err instanceof ApiError ? err.message : 'Sign-in failed. Try again.');
+    } finally {
       setOauthLoading(null);
-    }, 900);
+    }
   };
 
   const emailErr = v.email(p.email);
@@ -110,6 +100,7 @@ export function AuthPanel(p: AuthPanelProps) {
           </Button>
         </div>
       )}
+      {oauthError && <Notice tone="error" className="mt-2">{oauthError}</Notice>}
       <div className="mt-4 flex items-center gap-3 text-xs text-gray-500" aria-hidden="true">
         <span className="h-px flex-1 bg-gray-200" /> or with email <span className="h-px flex-1 bg-gray-200" />
       </div>
@@ -174,9 +165,9 @@ export function AuthPanel(p: AuthPanelProps) {
           {resetSent && <Notice tone="success">If an account exists for {p.email}, a reset link is on its way.</Notice>}
           <div className="flex flex-wrap items-center gap-3">
             <Button type="button" onClick={p.onLogin} loading={p.loggingIn}>Log in</Button>
-            <TextButton onClick={() => { setEmailTouched(true); if (!emailErr) setResetSent(true); }}>Forgot password?</TextButton>
+            <TextButton onClick={async () => { setEmailTouched(true); if (!emailErr) { await api.passwordReset(p.email).catch(() => null); setResetSent(true); } }}>Forgot password?</TextButton>
           </div>
-          <p className="text-xs text-gray-500">Demo: <span className="font-mono">{DEMO_PROFILE.email}</span> / <span className="font-mono">{DEMO_PASSWORD}</span></p>
+          <p className="text-xs text-gray-500">Demo account: <span className="font-mono">{DEMO_LOGIN.email}</span> / <span className="font-mono">{DEMO_LOGIN.password}</span></p>
         </div>
       )}
     </div>

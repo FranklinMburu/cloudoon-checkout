@@ -1,6 +1,4 @@
-import { CURRENCIES } from '../data/catalog';
-import { useStore } from '../state/store';
-import type { CurrencyCode, Step } from '../types';
+import { useStore, type Step } from '../state/store';
 import { Check, ChevronDown, Lock } from './icons';
 import { cx, focusRing } from './ui';
 
@@ -18,7 +16,7 @@ export function Logo() {
 }
 
 export function Header({ showCurrency = true }: { showCurrency?: boolean }) {
-  const { cart, update } = useStore();
+  const { cart, catalog, update } = useStore();
   return (
     <header className="sticky top-0 z-20 border-b border-gray-200 bg-white">
       <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-3 px-4 sm:px-6">
@@ -33,13 +31,13 @@ export function Header({ showCurrency = true }: { showCurrency?: boolean }) {
               <select
                 id="currency"
                 value={cart.currency}
-                onChange={(e) => update({ currency: e.target.value as CurrencyCode })}
+                onChange={(e) => update({ currency: e.target.value })}
                 className={cx(
                   'min-h-11 cursor-pointer appearance-none rounded-lg border border-gray-300 bg-white py-1 pr-8 pl-3 text-sm font-medium text-gray-900 sm:min-h-9',
                   'hover:border-gray-400 focus:border-brand-600 focus:ring-[3px] focus:ring-brand-600/20 focus:outline-none',
                 )}
               >
-                {CURRENCIES.map((c) => (
+                {catalog.currencies.map((c) => (
                   <option key={c.code} value={c.code}>{c.code} ({c.symbol})</option>
                 ))}
               </select>

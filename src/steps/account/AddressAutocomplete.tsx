@@ -1,5 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
-import { ADDRESS_BOOK, COUNTRIES, type AddressSuggestion } from '../../data/catalog';
+import { api } from '../../api/client';
+import type { AddressSuggestion } from '../../api/types';
+import { useStore } from '../../state/store';
 import { MapPin, Spinner } from '../../components/icons';
 import { FieldShell, cx, inputClass } from '../../components/ui';
 
@@ -22,10 +24,12 @@ export function AddressAutocomplete({ value, onChange, onSelect, onBlur, error }
   const wrapRef = useRef<HTMLDivElement>(null);
   const typed = useRef(false);
 
-  // Debounced mock lookup.
+  const { catalog } = useStore();
+
+  // Debounced lookup through the API (the backend proxies the address provider).
   useEffect(() => {
     if (!typed.current) return;
-    const q = value.trim().toLowerCase();
+    const q = value.trim();
     if (q.length < 3) {
       setOpen(false);
       setResults([]);
@@ -33,18 +37,25 @@ export function AddressAutocomplete({ value, onChange, onSelect, onBlur, error }
     }
     setLoading(true);
     setOpen(true);
+    const ctrl = new AbortController();
     const t = setTimeout(() => {
-      const words = q.split(/\s+/);
-      setResults(
-        ADDRESS_BOOK.filter((a) => {
-          const hay = `${a.line} ${a.city} ${a.postalCode}`.toLowerCase();
-          return words.every((w) => hay.includes(w));
-        }).slice(0, 5),
-      );
-      setActive(-1);
-      setLoading(false);
-    }, 300);
-    return () => clearTimeout(t);
+      api
+        .addresses(q, ctrl.signal)
+        .then((r) => {
+          setResults(r.results);
+          setActive(-1);
+          setLoading(false);
+        })
+        .catch((err) => {
+          if (err.name === 'AbortError') return;
+          setResults([]);
+          setLoading(false);
+        });
+    }, 250);
+    return () => {
+      clearTimeout(t);
+      ctrl.abort();
+    };
   }, [value]);
 
   useEffect(() => {
@@ -115,7 +126,7 @@ export function AddressAutocomplete({ value, onChange, onSelect, onBlur, error }
                 <MapPin size={16} className="mt-0.5 shrink-0 text-gray-500" />
                 <span>
                   <span className="block font-medium text-gray-950">{r.line}</span>
-                  <span className="block text-gray-600">{r.city} {r.postalCode} · {COUNTRIES.find((c) => c.code === r.country)?.name}</span>
+                  <span className="block text-gray-600">{r.city} {r.postal_code} · {catalog.countries.find((c) => c.code === r.country)?.name ?? r.country}</span>
                 </span>
               </li>
             ))

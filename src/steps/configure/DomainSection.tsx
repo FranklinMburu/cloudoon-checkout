@@ -1,13 +1,11 @@
 import { useState, type FormEvent } from 'react';
-import { NAMESERVERS } from '../../data/catalog';
-import { searchDomains, type DomainResult } from '../../lib/domainSearch';
-import { freeDomainEligible, freeDomainId, getTld } from '../../lib/pricing';
+import { ApiError, api } from '../../api/client';
+import type { DomainItem, DomainMode, DomainResult } from '../../api/types';
 import * as v from '../../lib/validation';
 import { useStore } from '../../state/store';
 import { useMoney } from '../../state/useMoney';
-import type { DomainItem, DomainMode } from '../../types';
 import { Alert, Check, Search } from '../../components/icons';
-import { Badge, Button, ListGroup, Notice, Section, Segmented, Skeleton, Switch, TextButton, TextField, cx, inputClass } from '../../components/ui';
+import { Button, ListGroup, Notice, Segmented, Skeleton, Switch, TextButton, TextField, cx, inputClass } from '../../components/ui';
 
 const MODES: { value: DomainMode; label: string }[] = [
   { value: 'register', label: 'Register' },
@@ -15,50 +13,58 @@ const MODES: { value: DomainMode; label: string }[] = [
   { value: 'existing', label: 'Use my own' },
 ];
 
-export function DomainSection() {
+/** Domain options. Rendered inside a collapsible section on step 1 (progressive disclosure). */
+export function DomainPanel() {
   const { cart } = useStore();
   const [mode, setMode] = useState<DomainMode>('register');
   const [prefill, setPrefill] = useState('');
 
   return (
-    <Section
-      id="domain"
-      title="Domain"
-      description="Optional. You can also add one later."
-      aside={freeDomainEligible(cart) ? <Badge tone="success">Free 1st year</Badge> : undefined}
-    >
+    <div>
       <Segmented label="Domain option" value={mode} onChange={(m) => { setMode(m); setPrefill(''); }} options={MODES} fullWidth />
-
       <div className="mt-4">
         {mode === 'register' && <RegisterPanel onTransfer={(name) => { setPrefill(name); setMode('transfer'); }} />}
         {mode === 'transfer' && <TransferPanel key={prefill} initial={prefill} />}
         {mode === 'existing' && <ExistingPanel />}
       </div>
-
-      {cart.domains.length > 0 && <DomainList />}
-    </Section>
+      {cart.domains.length > 0 && (
+        <div className="mt-5 space-y-2">
+          <p className="text-xs font-medium tracking-wide text-gray-500 uppercase">In your order</p>
+          {cart.domains.map((d) => <DomainCard key={d.name} domain={d} />)}
+        </div>
+      )}
+    </div>
   );
+}
+
+/** One-line summary shown while the domain section is collapsed. */
+export function useDomainSummary() {
+  const { cart, quote } = useStore();
+  if (cart.domains.length) return cart.domains.map((d) => d.name).join(', ');
+  return quote?.free_domain.eligible ? 'Add a domain — the first year is free with this plan' : 'Optional · register, transfer or use your own';
 }
 
 /* ------------------------------- Register ------------------------------ */
 
 function RegisterPanel({ onTransfer }: { onTransfer: (name: string) => void }) {
   const [query, setQuery] = useState('');
-  const [touched, setTouched] = useState(false);
+  const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<{ exact: DomainResult; suggestions: DomainResult[] } | null>(null);
 
-  const label = query.trim().toLowerCase().split('.')[0];
-  const error = touched ? v.domainLabel(label) : '';
-
   const submit = async (e: FormEvent) => {
     e.preventDefault();
-    setTouched(true);
-    if (v.domainLabel(label)) return;
+    const local = v.domainLabel(query.trim().toLowerCase().split('.')[0]);
+    if (local) return setError(local);
     setLoading(true);
     setResults(null);
-    setResults(await searchDomains(query));
-    setLoading(false);
+    try {
+      setResults(await api.checkDomain(query));
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Search failed. Try again.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -71,7 +77,7 @@ function RegisterPanel({ onTransfer }: { onTransfer: (name: string) => void }) {
             <input
               id="domain-q"
               value={query}
-              onChange={(e) => { setQuery(e.target.value); if (touched) setTouched(false); }}
+              onChange={(e) => { setQuery(e.target.value); setError(''); }}
               placeholder="yourbrand.com"
               autoComplete="off"
               autoCapitalize="none"
@@ -124,10 +130,11 @@ function ResultsSkeleton() {
 }
 
 function ResultRow({ result, highlight, onTransfer }: { result: DomainResult; highlight?: boolean; onTransfer?: (name: string) => void }) {
-  const { cart, addDomain, removeLine } = useStore();
-  const { usd } = useMoney();
+  const { cart, catalog, quote, addDomain, removeLine } = useStore();
+  const { fmt } = useMoney();
+  const tld = catalog.tlds.find((t) => t.tld === result.tld)!;
   const inCart = cart.domains.find((d) => d.name === result.name);
-  const free = freeDomainEligible(cart) && result.tld.freeWithHosting && !freeDomainId(cart);
+  const free = !!quote?.free_domain.eligible && !quote.free_domain.applied_to && tld.free_with_hosting;
 
   return (
     <div className={cx('flex items-center justify-between gap-3 px-3 py-2.5', highlight && cx('rounded-lg border', result.available ? 'border-green-600/40 bg-green-50/60' : 'border-gray-200 bg-gray-50'))}>
@@ -137,26 +144,28 @@ function ResultRow({ result, highlight, onTransfer }: { result: DomainResult; hi
           {highlight && (result.available ? <span className="text-xs font-medium text-green-700">Available</span> : <span className="text-xs font-medium text-gray-500">Taken</span>)}
         </p>
         <p className="text-xs text-gray-500 tabular-nums">
-          {result.available ? (
-            free ? <><span className="font-medium text-green-700">Free 1st year</span>, then {usd(result.tld.renew)}/yr</> : <>{usd(result.tld.register)} 1st year, then {usd(result.tld.renew)}/yr</>
-          ) : 'Registered by someone else'}
+          {result.available
+            ? free
+              ? <><span className="font-medium text-green-700">Free 1st year</span>, then {fmt(tld.renew)}/yr</>
+              : <>{fmt(tld.register)} 1st year, then {fmt(tld.renew)}/yr</>
+            : 'Registered by someone else'}
         </p>
       </div>
       {result.available ? (
         inCart ? (
           <span className="flex items-center gap-2">
             <span className="flex items-center gap-1 text-[13px] font-medium text-green-700"><Check size={14} /> Added</span>
-            <TextButton tone="muted" onClick={() => removeLine(`domain:${inCart.id}`)} aria-label={`Remove ${result.name}`}>Remove</TextButton>
+            <TextButton tone="muted" onClick={() => removeLine(`domain:${inCart.name}`)} aria-label={`Remove ${result.name}`}>Remove</TextButton>
           </span>
         ) : (
-          <Button size="sm" variant={highlight ? 'primary' : 'secondary'} onClick={() => addDomain({ name: result.name, tld: result.tld.tld, mode: 'register', autoRenew: true, privacy: result.tld.privacy })}>
+          <Button size="sm" variant={highlight ? 'primary' : 'secondary'} onClick={() => addDomain({ name: result.name, mode: 'register', auto_renew: true, privacy: tld.privacy_supported })}>
             Add
           </Button>
         )
       ) : onTransfer ? (
         <TextButton onClick={() => onTransfer(result.name)}>Transfer it</TextButton>
       ) : (
-        <span className="text-xs text-gray-400">Unavailable</span>
+        <span className="text-xs text-gray-500">Unavailable</span>
       )}
     </div>
   );
@@ -165,16 +174,16 @@ function ResultRow({ result, highlight, onTransfer }: { result: DomainResult; hi
 /* ------------------------------- Transfer ------------------------------ */
 
 function TransferPanel({ initial }: { initial: string }) {
-  const { cart, addDomain } = useStore();
-  const { usd } = useMoney();
+  const { cart, catalog, addDomain } = useStore();
+  const { fmt } = useMoney();
   const [domain, setDomain] = useState(initial);
   const [code, setCode] = useState('');
   const [touched, setTouched] = useState({ domain: false, code: false });
-  const [loading, setLoading] = useState(false);
 
   const name = v.normalizeDomain(domain);
-  const tld = getTld('.' + name.split('.').slice(1).join('.'));
-  const domainError = v.fullDomain(domain) || (name && !tld ? 'We can transfer .com, .net, .org, .co.ke, .africa, .io, .dev and .store.' : '') ||
+  const tld = [...catalog.tlds].sort((a, b) => b.tld.length - a.tld.length).find((t) => name.endsWith(t.tld));
+  const supported = catalog.tlds.map((t) => t.tld).join(', ');
+  const domainError = v.fullDomain(domain) || (name && !tld ? `We can transfer ${supported} domains.` : '') ||
     (cart.domains.some((d) => d.name === name) ? 'This domain is already in your order.' : '');
   const codeError = code.trim().length >= 6 ? '' : code ? 'Auth codes are at least 6 characters.' : 'Enter the auth code from your current registrar.';
 
@@ -182,14 +191,10 @@ function TransferPanel({ initial }: { initial: string }) {
     e.preventDefault();
     setTouched({ domain: true, code: true });
     if (domainError || codeError || !tld) return;
-    setLoading(true);
-    setTimeout(() => {
-      addDomain({ name, tld: tld.tld, mode: 'transfer', autoRenew: true, privacy: tld.privacy, authCode: code.trim() });
-      setDomain('');
-      setCode('');
-      setTouched({ domain: false, code: false });
-      setLoading(false);
-    }, 600);
+    addDomain({ name, mode: 'transfer', auto_renew: true, privacy: tld.privacy_supported });
+    setDomain('');
+    setCode('');
+    setTouched({ domain: false, code: false });
   };
 
   return (
@@ -204,7 +209,7 @@ function TransferPanel({ initial }: { initial: string }) {
           autoCapitalize="none"
           spellCheck={false}
           error={touched.domain ? domainError : ''}
-          hint={tld ? `${usd(tld.transfer)}, includes 1 extra year` : undefined}
+          hint={tld ? `${fmt(tld.transfer)}, includes 1 extra year` : undefined}
         />
         <TextField
           label="Auth (EPP) code"
@@ -214,11 +219,11 @@ function TransferPanel({ initial }: { initial: string }) {
           autoComplete="off"
           spellCheck={false}
           error={touched.code ? codeError : ''}
-          hint="From your current registrar"
+          hint="From your current registrar. It’s sent to the registry, never stored."
         />
       </div>
       <p className="text-xs text-gray-500">Unlock the domain at your registrar first. Transfers take 5–7 days; your site stays online.</p>
-      <Button type="submit" variant="secondary" loading={loading}>Add transfer</Button>
+      <Button type="submit" variant="secondary">Add transfer</Button>
     </form>
   );
 }
@@ -226,7 +231,7 @@ function TransferPanel({ initial }: { initial: string }) {
 /* ------------------------------- Existing ------------------------------ */
 
 function ExistingPanel() {
-  const { cart, addDomain } = useStore();
+  const { cart, catalog, addDomain } = useStore();
   const [domain, setDomain] = useState('');
   const [touched, setTouched] = useState(false);
   const name = v.normalizeDomain(domain);
@@ -236,7 +241,7 @@ function ExistingPanel() {
     e.preventDefault();
     setTouched(true);
     if (error) return;
-    addDomain({ name, tld: '.' + name.split('.').slice(1).join('.'), mode: 'existing', autoRenew: false, privacy: false });
+    addDomain({ name, mode: 'existing', auto_renew: false, privacy: false });
     setDomain('');
     setTouched(false);
   };
@@ -254,7 +259,7 @@ function ExistingPanel() {
           autoCapitalize="none"
           spellCheck={false}
           error={touched ? error : ''}
-          hint={<>Stays with your registrar. Point it to <span className="font-mono">{NAMESERVERS[0]}</span> and <span className="font-mono">{NAMESERVERS[1]}</span>.</>}
+          hint={<>Stays with your registrar. Point it to <span className="font-mono">{catalog.nameservers.join(' and ')}</span>.</>}
         />
         <Button type="submit" variant="secondary" className="mt-[26px]">Use</Button>
       </div>
@@ -262,25 +267,15 @@ function ExistingPanel() {
   );
 }
 
-/* ------------------------------ Domain list ---------------------------- */
+/* ------------------------------ Domain card ---------------------------- */
 
 const MODE_LABEL: Record<DomainMode, string> = { register: 'Registration', transfer: 'Transfer', existing: 'External domain' };
 
-function DomainList() {
-  const { cart } = useStore();
-  return (
-    <div className="mt-5 space-y-2">
-      <p className="text-xs font-medium tracking-wide text-gray-500 uppercase">In your order</p>
-      {cart.domains.map((d) => <DomainCard key={d.id} domain={d} />)}
-    </div>
-  );
-}
-
 function DomainCard({ domain: d }: { domain: DomainItem }) {
-  const { cart, updateDomain, removeLine } = useStore();
-  const { usd } = useMoney();
-  const tld = getTld(d.tld);
-  const isFree = freeDomainId(cart) === d.id;
+  const { catalog, quote, updateDomain, removeLine } = useStore();
+  const { fmt } = useMoney();
+  const line = quote?.lines.find((l) => l.id === `domain:${d.name}`);
+  const tld = [...catalog.tlds].sort((a, b) => b.tld.length - a.tld.length).find((t) => d.name.endsWith(t.tld));
 
   return (
     <ListGroup>
@@ -289,26 +284,21 @@ function DomainCard({ domain: d }: { domain: DomainItem }) {
           <p className="text-sm font-medium break-all text-gray-950">{d.name}</p>
           <p className="text-xs text-gray-500 tabular-nums">
             {MODE_LABEL[d.mode]}
-            {d.mode !== 'existing' && tld && <> · {isFree ? 'Free 1st year' : usd(d.mode === 'transfer' ? tld.transfer : tld.register)}, then {usd(tld.renew)}/yr</>}
+            {line && d.mode !== 'existing' && <> · {Number(line.due_today) === 0 ? 'Free 1st year' : fmt(line.due_today)}{line.renewal && <>, then {fmt(line.renewal.amount)}/yr</>}</>}
             {d.mode === 'existing' && ' · No charge'}
           </p>
         </div>
-        <TextButton tone="muted" onClick={() => removeLine(`domain:${d.id}`)} aria-label={`Remove ${d.name}`}>Remove</TextButton>
+        <TextButton tone="muted" onClick={() => removeLine(`domain:${d.name}`)} aria-label={`Remove ${d.name}`}>Remove</TextButton>
       </div>
       {d.mode !== 'existing' && (
         <>
+          <Switch checked={d.auto_renew} onChange={(auto_renew) => updateDomain(d.name, { auto_renew })} label="Auto-renew" description={d.auto_renew ? 'Renews every year' : 'Expires after 1 year'} />
           <Switch
-            checked={d.autoRenew}
-            onChange={(autoRenew) => updateDomain(d.id, { autoRenew })}
-            label="Auto-renew"
-            description={d.autoRenew ? 'Renews every year' : 'Expires after 1 year'}
-          />
-          <Switch
-            checked={tld?.privacy ? d.privacy : false}
-            disabled={!tld?.privacy}
-            onChange={(privacy) => updateDomain(d.id, { privacy })}
+            checked={tld?.privacy_supported ? d.privacy : false}
+            disabled={!tld?.privacy_supported}
+            onChange={(privacy) => updateDomain(d.name, { privacy })}
             label="WHOIS privacy"
-            description={tld?.privacy ? 'Hides your contact details · Free' : `Not offered by the ${d.tld} registry`}
+            description={tld?.privacy_supported ? 'Hides your contact details · Free' : `Not offered by the ${tld?.tld ?? ''} registry`}
           />
         </>
       )}
