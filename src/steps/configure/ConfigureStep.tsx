@@ -30,9 +30,11 @@ export function ConfigureStep() {
       >
         <DomainPanel />
       </CollapsibleSection>
-      <CollapsibleSection id="addons" title="Add-ons" summary={addonsSummary} open={open.addons} onToggle={() => setOpen((o) => ({ ...o, addons: !o.addons }))}>
-        <AddonsPanel />
-      </CollapsibleSection>
+      {cart.category !== 'none' && (
+        <CollapsibleSection id="addons" title="Add-ons" summary={addonsSummary} open={open.addons} onToggle={() => setOpen((o) => ({ ...o, addons: !o.addons }))}>
+          <AddonsPanel />
+        </CollapsibleSection>
+      )}
     </div>
   );
 }

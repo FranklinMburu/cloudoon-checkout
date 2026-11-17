@@ -5,7 +5,7 @@ import { ChevronDown } from '../icons';
 import { cx, focusRing } from './styles';
 
 /** Full-bleed block on phones (no card-in-card), a bordered card from `sm` up. */
-export function Section({ id, title, description, aside, children }: { id?: string; title: string; description?: string; aside?: ReactNode; children: ReactNode }) {
+export function Section({ id, title, description, aside, children }: { id?: string; title: string; description?: string; aside?: ReactNode; children?: ReactNode }) {
   const headingId = useId();
   return (
     <section

@@ -4,7 +4,7 @@ import type { ReactNode } from 'react';
 import type { ProductCategory } from '../../../api/types';
 import { useStore } from '../../../state/store';
 import { Cloud, Cpu, Layers, Server } from '../../../components/icons';
-import { Section, cx } from '../../../components/ui';
+import { Notice, Section, cx } from '../../../components/ui';
 import { CloudConfigurator } from './CloudConfigurator';
 import { DedicatedConfigurator } from './DedicatedConfigurator';
 import { SharedPlans } from './SharedPlans';
@@ -22,6 +22,9 @@ export function HostingSection() {
 
   return (
     <Section id="hosting" title="Hosting">
+      {cart.category === 'none' && (
+        <Notice className="mb-3">This order is for domains only. Choose a hosting type to add hosting back.</Notice>
+      )}
       <fieldset>
         <legend className="sr-only">Hosting type</legend>
         <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
