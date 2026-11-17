@@ -1,0 +1,22 @@
+# Google AI Studio imports an app from the root of a branch, so the `ai-studio` branch
+# mirrors `frontend/` (with its history). It is rebuilt on every push to main; never edit it directly.
+name: Update the ai-studio branch
+
+on:
+  push:
+    branches: [main]
+    paths: ["frontend/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - run: git subtree split --prefix frontend -b ai-studio
+      - run: git push --force origin ai-studio

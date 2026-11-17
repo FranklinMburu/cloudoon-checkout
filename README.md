@@ -22,6 +22,10 @@ The backend is the single source of truth: the catalog, prices, currencies, tax 
 - [x] CI: Ruff, Django checks, migration check, tests on PostgreSQL, ESLint, frontend type-check and build
 - [x] Deployed on Render: [checkout](https://cloudoon-checkout.onrender.com) · [API](https://cloudoon-checkout-api.onrender.com/api/v1/) (free tier: the first request after idle takes ~50 s)
 
+## Google AI Studio
+
+AI Studio imports an app from the root of a branch, so the [`ai-studio`](../../tree/ai-studio) branch mirrors `frontend/`. A GitHub Action rebuilds it on every push to `main`. In AI Studio, choose **Import from GitHub**, pick this repository and the `ai-studio` branch.
+
 ## Quick start
 
 ```bash
