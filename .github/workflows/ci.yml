@@ -20,6 +20,7 @@ jobs:
           --health-interval 5s --health-timeout 5s --health-retries 10
     env:
       DATABASE_URL: postgres://cloudoon:cloudoon@localhost:5432/cloudoon
+      DEBUG: "True"  # settings fail closed (DEBUG off) unless told otherwise
     defaults:
       run:
         working-directory: backend
@@ -31,6 +32,8 @@ jobs:
           cache: pip
           cache-dependency-path: backend/requirements*.txt
       - run: pip install -r requirements-dev.txt
+      - name: Lint and format check (Ruff)
+        run: ruff check . && ruff format --check .
       - name: Django system checks
         run: python manage.py check
       - name: Migrations match the models
@@ -49,5 +52,7 @@ jobs:
         with:
           node-version: 22
       - run: npm install --no-audit --no-fund
+      - name: Lint (ESLint)
+        run: npm run lint
       - name: Type-check and build
         run: npm run build
