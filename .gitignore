@@ -1,12 +1,17 @@
-node_modules
-dist
-.DS_Store
-*.log
+# Secrets and local settings
 .env
-.env.local
-.vscode
+.env.*
+.vscode/
+.idea/
+.DS_Store
 
-# Python
+# Frontend
+node_modules/
+dist/
+.vite/
+*.log
+
+# Backend
 __pycache__/
 *.pyc
 .venv/
@@ -14,3 +19,4 @@ venv/
 *.sqlite3
 staticfiles/
 .pytest_cache/
+.ruff_cache/
