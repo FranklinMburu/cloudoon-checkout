@@ -22,9 +22,8 @@ It also runs unchanged in **Google AI Studio**: the `index.html` import map load
 src/
   api/client.ts          the only module that calls the backend (typed functions, ApiError)
   api/types.ts           API request/response types (snake_case, money as decimal strings)
-  api/paymentProvider.ts simulated card tokenization (stands in for Stripe.js)
   state/store.tsx        cart (localStorage), catalog + quote from the API, checkout (sessionStorage)
-  lib/                   formatting, validation, safe storage helpers
+  lib/                   formatting, validation, storage, Stripe.js loader, sign-in popup
   components/ui/         design-system primitives (Button, RadioCard, TextField, Switch, ...)
   components/            header/stepper, order summary, boot screen, icons
   steps/configure/       step 1: hosting (one file per product type), billing period, domain, add-ons
@@ -62,10 +61,10 @@ src/
 | What | Value |
 |---|---|
 | Promo codes | `WELCOME10` (10% off first term), `HOSTING25` (25% off hosting), `SUMMER24` (expired) |
-| Cards | `4242 4242 4242 4242` succeeds · `4000 0000 0000 0002` is declined (any future expiry, any CVC) |
+| Cards (Stripe test mode) | `4242 4242 4242 4242` succeeds · `4000 0000 0000 0002` is declined (any future expiry, any CVC) |
 | Returning customer | `demo@cloudoon.com` / `Demo1234!` |
-| Taken domains | `google`, `amazon`, `safaricom`, `cloudoon` … and about 1 in 4 other names |
-| Address lookup | Type `Westlands`, `Waiyaki`, `Ngong`, `Baker`, `Fifth Avenue` … |
+| Domains | Real availability from the registries: try `google`, or your own name |
+| Address lookup | Real addresses from OpenStreetMap: try `Waiyaki Way` or `Kenyatta Avenue` |
 | Out of stock | AMD EPYC 9354P in Nairobi |
 
 The first load after the free-tier API has been idle can take up to a minute while the server starts; the page says so.
