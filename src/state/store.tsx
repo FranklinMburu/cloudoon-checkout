@@ -168,7 +168,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setCart((c) => (c ? { ...c, domains: c.domains.map((d) => (d.name === name ? { ...d, ...patch } : d)) } : c));
   }, []);
 
-  const catalogDefaultBandwidth = useRef('bw-10');
+  const catalogDefaultBandwidth = useRef(''); // set from the catalog's default bandwidth package
   useEffect(() => {
     if (catalog) catalogDefaultBandwidth.current = catalog.dedicated.bandwidth.find((b) => b.is_default)?.slug ?? catalogDefaultBandwidth.current;
   }, [catalog]);
