@@ -1,0 +1,24 @@
+[project]
+name = "cloudoon-checkout-api"
+version = "1.0.0"
+description = "Django REST API for the Cloudoon hosting checkout"
+requires-python = ">=3.12"
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+extend-exclude = ["*/migrations/*"]
+
+[tool.ruff.lint]
+# pycodestyle, pyflakes, isort, bugbear, pyupgrade, simplify, Django, naming, comprehensions
+select = ["E", "W", "F", "I", "B", "UP", "SIM", "DJ", "N", "C4", "RUF"]
+ignore = [
+    "RUF001", "RUF002", "RUF003",  # typographic characters (’ “ × –) in user-facing copy are intentional
+    "RUF012",  # Django/DRF class attributes (Meta, choices) are not ClassVar-annotated by convention
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["config", "catalog", "pricing", "domains", "accounts", "orders"]
+
+[tool.ruff.format]
+quote-style = "double"

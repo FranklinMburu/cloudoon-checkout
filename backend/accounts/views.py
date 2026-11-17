@@ -91,7 +91,10 @@ class PasswordResetView(APIView):
     throttle_scope = "auth"
 
     def post(self, request):
-        return Response({"detail": "If an account exists for that email, a reset link is on its way."}, status=status.HTTP_202_ACCEPTED)
+        return Response(
+            {"detail": "If an account exists for that email, a reset link is on its way."},
+            status=status.HTTP_202_ACCEPTED,
+        )
 
 
 class AddressLookupView(APIView):

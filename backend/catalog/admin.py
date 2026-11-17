@@ -13,7 +13,9 @@ class CountryAdmin(admin.ModelAdmin):
     list_display = ["code", "name", "tax_name", "tax_rate", "currency"]
 
 
-@admin.register(models.SharedPlan, models.OperatingSystem, models.CloudSize, models.BandwidthPackage, models.AddOn, models.SslOption)
+@admin.register(
+    models.SharedPlan, models.OperatingSystem, models.CloudSize, models.BandwidthPackage, models.AddOn, models.SslOption
+)
 class PricedItemAdmin(admin.ModelAdmin):
     list_display = ["slug", "name", "monthly_usd"]
 
@@ -34,4 +36,6 @@ class PromoAdmin(admin.ModelAdmin):
     list_display = ["code", "label", "percent", "applies_to", "valid_until"]
 
 
-admin.site.register([models.ProductCategory, models.CycleDiscount, models.VpsPricing, models.DataCenter, models.ScalingPreset])
+admin.site.register(
+    [models.ProductCategory, models.CycleDiscount, models.VpsPricing, models.DataCenter, models.ScalingPreset]
+)
