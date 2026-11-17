@@ -25,11 +25,11 @@ services:
         fromDatabase:
           name: cloudoon-db
           property: connectionString
-      # Browsers may call the API only from the checkout site and Google AI Studio previews.
+      # Browsers may call the API only from the checkout site and Google AI Studio (previews run on *.usercontent.goog / *.run.app).
       - key: CORS_ALLOWED_ORIGINS
         value: https://cloudoon-checkout.onrender.com,https://aistudio.google.com,https://ai.studio
       - key: CORS_ALLOWED_ORIGIN_REGEXES
-        value: ^https://[a-z0-9-]+\.(scf\.)?usercontent\.goog$
+        value: ^https://[a-z0-9-]+\.(scf\.)?usercontent\.goog$,^https://ais-[a-z]+-[a-z0-9-]+\.[a-z0-9-]+\.run\.app$
       # Integrations: client ids are public; secrets are entered in the Render dashboard (sync: false).
       - key: GITHUB_CLIENT_ID
         value: Ov23liGGOU7ptv2UAtCV

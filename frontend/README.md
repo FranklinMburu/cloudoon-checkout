@@ -9,7 +9,8 @@ React 19 + TypeScript + Tailwind CSS. A thin client: every product, price, disco
 ```bash
 npm install
 VITE_API_URL=http://localhost:8000 npm run dev    # API from ../backend; defaults to the deployed API
-npm run build                                     # type-check + production build
+npm run typecheck                                 # TypeScript
+npm run build                                     # production build
 npm run lint                                      # ESLint (TypeScript + Rules of Hooks)
 npm run format                                    # Prettier
 ```
