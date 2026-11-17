@@ -5,7 +5,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ApiError, api, setAuthToken } from '../api/client';
-import type { Account, BillingDetails, CartState, Catalog, DomainItem, Order, Quote } from '../api/types';
+import type { Account, BillingDetails, CartState, Catalog, CheckoutConfig, DomainItem, Order, Quote } from '../api/types';
 import { BootScreen } from '../components/BootScreen';
 import { read, write } from '../lib/storage';
 
@@ -33,7 +33,7 @@ function isUsable(cart: CartState | null, catalog: Catalog): cart is CartState {
   const has = <T,>(list: T[], pred: (x: T) => boolean) => list.some(pred);
   try {
     return (
-      has(catalog.categories, (c) => c.slug === cart.category) &&
+      (cart.category === 'none' ? cart.domains.length > 0 : has(catalog.categories, (c) => c.slug === cart.category)) &&
       has(catalog.shared_plans, (p) => p.slug === cart.shared.plan) &&
       has(catalog.vps.operating_systems, (o) => o.slug === cart.vps.os) &&
       has(catalog.dedicated.servers, (s) => s.slug === cart.dedicated.server) &&
@@ -57,6 +57,8 @@ interface Store {
   catalogError: ApiError | null;
   retryCatalog: () => void;
   cart: CartState;
+  /** Sign-in and payment options the backend has switched on; null while loading. */
+  config: CheckoutConfig | null;
   quote: Quote | null;
   quoting: boolean;
   quoteError: string | null;
@@ -74,6 +76,11 @@ interface Store {
 
 const StoreContext = createContext<Store | null>(null);
 
+const NO_INTEGRATIONS: CheckoutConfig = {
+  sign_in: [],
+  payments: { methods: [], stripe_publishable_key: '', paypal_client_id: '', paypal_currencies: [] },
+};
+
 export function StoreProvider({ children }: { children: ReactNode }) {
   const saved = useRef<CartState | null>(read<CartState>(localStorage, CART_KEY));
   const [cart, setCart] = useState<CartState | null>(null);
@@ -84,6 +91,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [quoting, setQuoting] = useState(false);
   const [quoteError, setQuoteError] = useState<string | null>(null);
   const [checkout, setCheckout] = useState<CheckoutState>(() => ({ ...DEFAULT_CHECKOUT, ...read<CheckoutState>(sessionStorage, CHECKOUT_KEY) }));
+  const [config, setConfig] = useState<CheckoutConfig | null>(null);
+
+  useEffect(() => {
+    // If this fails, the checkout still works with email sign-in; payment options show an error.
+    api.config().then(setConfig).catch(() => setConfig(NO_INTEGRATIONS));
+  }, []);
 
   // Catalog prices depend on currency and billing period, so refetch when either changes.
   const currency = cart?.currency ?? saved.current?.currency ?? 'USD';
@@ -161,7 +174,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const removeLine: Store['removeLine'] = useCallback((lineId) => {
     setCart((c) => {
       if (!c) return c;
-      if (lineId.startsWith('domain:')) return { ...c, domains: c.domains.filter((d) => d.name !== lineId.slice(7)) };
+      if (lineId === 'hosting') return { ...c, category: 'none' }; // domain-only order; the hosting choices are kept
+      if (lineId.startsWith('domain:')) {
+        const domains = c.domains.filter((d) => d.name !== lineId.slice(7));
+        // The last domain of a domain-only order can't go: bring back the default hosting instead.
+        return { ...c, domains, category: c.category === 'none' && !domains.length ? catalogRef.current?.default_cart.category ?? 'shared' : c.category };
+      }
       const a = c.addons;
       switch (lineId) {
         case 'addon:backups': return { ...c, addons: { ...a, backups: false } };
@@ -209,12 +227,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     () =>
       cart
         ? {
-            catalog, catalogError, retryCatalog: () => setCatalogAttempt((n) => n + 1),
+            catalog, catalogError, retryCatalog: () => setCatalogAttempt((n) => n + 1), config,
             cart, quote, quoting, quoteError, update, addDomain, updateDomain, removeLine,
             checkout, setStep, setAccount, setBilling, completeOrder, resetAll,
           }
         : null,
-    [catalog, catalogError, cart, quote, quoting, quoteError, update, addDomain, updateDomain, removeLine, checkout, setStep, setAccount, setBilling, completeOrder, resetAll],
+    [catalog, catalogError, config, cart, quote, quoting, quoteError, update, addDomain, updateDomain, removeLine, checkout, setStep, setAccount, setBilling, completeOrder, resetAll],
   );
 
   if (!value || !catalog) {

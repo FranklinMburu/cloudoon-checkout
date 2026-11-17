@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ApiError, api } from '../../api/client';
-import type { Account } from '../../api/types';
+import type { Account, SignInMethod } from '../../api/types';
+import { signInWithPopup, type PopupSignIn } from '../../lib/oauthPopup';
 import * as v from '../../lib/validation';
 import { useStore } from '../../state/store';
 import { Check, GitHubMark, GoogleMark, Key } from '../../components/icons';
@@ -35,7 +36,8 @@ export function useSignIn() {
 
 export function AuthPanel(p: AuthPanelProps) {
   const completeSignIn = useSignIn();
-  const [oauthLoading, setOauthLoading] = useState<Account['provider'] | null>(null);
+  const { config } = useStore();
+  const [oauthLoading, setOauthLoading] = useState<SignInMethod | null>(null);
   const [oauthError, setOauthError] = useState('');
   const [ssoOpen, setSsoOpen] = useState(false);
   const [ssoEmail, setSsoEmail] = useState('');
@@ -45,17 +47,33 @@ export function AuthPanel(p: AuthPanelProps) {
   const [showPw, setShowPw] = useState(false);
   const [resetSent, setResetSent] = useState(false);
 
-  // Simulated OAuth (see backend accounts/views.py): no page change, so the cart stays put.
-  const signIn = async (provider: 'google' | 'github' | 'sso', email?: string) => {
-    setOauthLoading(provider);
+  // The provider's page opens in a popup, so this page (and the cart) never reloads.
+  const popup = useRef<PopupSignIn | null>(null);
+  useEffect(() => () => popup.current?.cancel(), []);
+
+  const signIn = async (method: SignInMethod, email?: string) => {
+    popup.current?.cancel();
+    const attempt = signInWithPopup(method, email);
+    popup.current = attempt;
+    setOauthLoading(method);
     setOauthError('');
     try {
-      completeSignIn(await api.oauth(provider, email));
+      completeSignIn(await attempt.result);
     } catch (err) {
+      if (popup.current !== attempt) return; // replaced by a newer attempt
       setOauthError(err instanceof ApiError ? err.message : 'Sign-in failed. Try again.');
     } finally {
-      setOauthLoading(null);
+      if (popup.current === attempt) {
+        popup.current = null;
+        setOauthLoading(null);
+      }
     }
+  };
+
+  const cancelSignIn = () => {
+    popup.current?.cancel();
+    popup.current = null;
+    setOauthLoading(null);
   };
 
   const emailErr = v.email(p.email);
@@ -64,18 +82,25 @@ export function AuthPanel(p: AuthPanelProps) {
   const showPwErr = (pwTouched || p.showErrors) && !!pwErr;
   const ssoErr = v.email(ssoEmail);
 
-  const oauth = (
+  const methods = config?.sign_in ?? [];
+  const oauth = methods.length > 0 && (
     <div>
-      <div className="grid gap-2 sm:grid-cols-3">
-        <Button variant="secondary" loading={oauthLoading === 'google'} disabled={!!oauthLoading} onClick={() => signIn('google')}>
-          {oauthLoading !== 'google' && <GoogleMark size={16} />} Google
-        </Button>
-        <Button variant="secondary" loading={oauthLoading === 'github'} disabled={!!oauthLoading} onClick={() => signIn('github')}>
-          {oauthLoading !== 'github' && <GitHubMark size={16} />} GitHub
-        </Button>
-        <Button variant="secondary" disabled={!!oauthLoading} onClick={() => setSsoOpen((o) => !o)} aria-expanded={ssoOpen}>
-          <Key size={16} /> SSO
-        </Button>
+      <div className={cx('grid gap-2', methods.length === 3 && 'sm:grid-cols-3', methods.length === 2 && 'sm:grid-cols-2')}>
+        {methods.includes('google') && (
+          <Button variant="secondary" loading={oauthLoading === 'google'} disabled={!!oauthLoading} onClick={() => signIn('google')}>
+            {oauthLoading !== 'google' && <GoogleMark size={16} />} Google
+          </Button>
+        )}
+        {methods.includes('github') && (
+          <Button variant="secondary" loading={oauthLoading === 'github'} disabled={!!oauthLoading} onClick={() => signIn('github')}>
+            {oauthLoading !== 'github' && <GitHubMark size={16} />} GitHub
+          </Button>
+        )}
+        {methods.includes('sso') && (
+          <Button variant="secondary" disabled={!!oauthLoading} onClick={() => setSsoOpen((o) => !o)} aria-expanded={ssoOpen}>
+            <Key size={16} /> SSO
+          </Button>
+        )}
       </div>
       {ssoOpen && (
         <div className="mt-2 flex items-start gap-2 rounded-lg bg-gray-50 p-3">
@@ -88,7 +113,7 @@ export function AuthPanel(p: AuthPanelProps) {
             onChange={setSsoEmail}
             onBlur={() => setSsoTouched(true)}
             error={ssoTouched ? ssoErr : ''}
-            hint="We’ll open your company’s sign-in page."
+            hint="For companies that use Google Workspace."
             placeholder="you@company.com"
           />
           <Button
@@ -99,6 +124,11 @@ export function AuthPanel(p: AuthPanelProps) {
             Continue
           </Button>
         </div>
+      )}
+      {oauthLoading && (
+        <p className="mt-2 text-[13px] text-gray-600" role="status">
+          Finish signing in in the pop-up window. <TextButton onClick={cancelSignIn}>Cancel</TextButton>
+        </p>
       )}
       {oauthError && <Notice tone="error" className="mt-2">{oauthError}</Notice>}
       <div className="mt-4 flex items-center gap-3 text-xs text-gray-500" aria-hidden="true">
