@@ -5,3 +5,12 @@ dist
 .env
 .env.local
 .vscode
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.sqlite3
+staticfiles/
+.pytest_cache/
