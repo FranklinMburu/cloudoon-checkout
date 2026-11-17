@@ -72,64 +72,6 @@ export const normalizeDomain = (v: string) =>
 
 /* -------------------------------- Payment ------------------------------ */
 
-export type CardBrand = 'Visa' | 'Mastercard' | 'American Express' | null;
-
-export function cardBrand(num: string): CardBrand {
-  const d = num.replace(/\D/g, '');
-  if (/^4/.test(d)) return 'Visa';
-  if (/^(5[1-5]|2[2-7])/.test(d)) return 'Mastercard';
-  if (/^3[47]/.test(d)) return 'American Express';
-  return null;
-}
-
-export function formatCardNumber(v: string) {
-  const d = v.replace(/\D/g, '').slice(0, 16);
-  return d.replace(/(.{4})/g, '$1 ').trim();
-}
-
-function luhn(num: string) {
-  const d = num.replace(/\D/g, '');
-  let sum = 0;
-  for (let i = 0; i < d.length; i++) {
-    let n = Number(d[d.length - 1 - i]);
-    if (i % 2 === 1) {
-      n *= 2;
-      if (n > 9) n -= 9;
-    }
-    sum += n;
-  }
-  return d.length >= 13 && sum % 10 === 0;
-}
-
-export function cardNumber(v: string) {
-  const d = v.replace(/\D/g, '');
-  if (!d) return 'Enter your card number.';
-  if (d.length < 15) return 'Your card number is incomplete.';
-  return luhn(d) ? '' : 'This card number isn’t valid. Check the digits.';
-}
-
-export function formatExpiry(v: string) {
-  const d = v.replace(/\D/g, '').slice(0, 4);
-  return d.length > 2 ? `${d.slice(0, 2)} / ${d.slice(2)}` : d;
-}
-
-export function expiry(v: string, now = new Date()) {
-  const d = v.replace(/\D/g, '');
-  if (!d) return 'Enter the expiry date.';
-  if (d.length < 4) return 'Use the format MM / YY.';
-  const m = Number(d.slice(0, 2));
-  const y = 2000 + Number(d.slice(2));
-  if (m < 1 || m > 12) return 'Month must be between 01 and 12.';
-  const endOfMonth = new Date(y, m, 0, 23, 59, 59);
-  return endOfMonth < now ? 'This card has expired.' : '';
-}
-
-export function cvc(v: string) {
-  const d = v.replace(/\D/g, '');
-  if (!d) return 'Enter the 3–4 digit security code.';
-  return d.length >= 3 ? '' : 'The security code is 3 or 4 digits.';
-}
-
 export function mpesaPhone(v: string) {
   const d = v.replace(/\D/g, '');
   if (!d) return 'Enter your M-Pesa phone number.';
