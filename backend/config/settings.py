@@ -125,6 +125,7 @@ REST_FRAMEWORK = {
         "auth": "20/min",
         "lookup": "60/min",
         "orders": "20/min",
+        "oauth-poll": "120/min",
     },
 }
 if DEBUG:

@@ -1,13 +1,15 @@
 """Sign in with Google or GitHub: the OAuth 2.0 authorization-code flow.
 
-1. The checkout opens a popup at `auth/oauth/<provider>/start/?origin=<checkout origin>`.
+1. The checkout makes a random `nonce` and opens a popup at
+   `auth/oauth/<method>/start/?nonce=...`.
 2. `authorize_url()` sends the customer to the provider with a signed `state` that
-   carries the checkout's origin and expires in ten minutes. That blocks forged
-   callbacks (CSRF) and redirects to sites we don't own.
+   carries the nonce and expires in ten minutes, so forged callbacks are rejected.
 3. The provider redirects back to `callback/` with a one-time `code`. We exchange it
-   server-side (the client secret never reaches a browser) and read the verified email.
-4. The popup hands a single-use ticket to the checkout window, which trades it for
-   an API token (`POST auth/oauth/ticket/`).
+   server-side (the client secret never reaches a browser), read the verified email
+   and park the result under the nonce.
+4. Meanwhile the checkout polls `POST auth/oauth/result/` with its nonce and gets an
+   API token once, and only once. Polling (rather than `window.opener.postMessage`)
+   keeps working when the provider's pages cut the link between the two windows.
 
 Company SSO uses Google Workspace: `hd` limits the Google account picker to the
 company's domain, and we check the returned `hd` claim because the picker hint alone
@@ -16,7 +18,6 @@ can be bypassed.
 
 from __future__ import annotations
 
-import hashlib
 from dataclasses import dataclass
 from urllib.parse import urlencode
 
@@ -28,7 +29,7 @@ from django.core.cache import cache
 
 TIMEOUT_SECONDS = 8
 STATE_MAX_AGE = 10 * 60
-TICKET_MAX_AGE = 2 * 60
+RESULT_MAX_AGE = 10 * 60
 PERSONAL_EMAIL_DOMAINS = {"gmail.com", "googlemail.com", "outlook.com", "hotmail.com", "yahoo.com", "icloud.com"}
 
 
@@ -80,12 +81,12 @@ def enabled_methods() -> list[str]:
     return methods
 
 
-def authorize_url(method: str, origin: str, redirect_uri: str, work_email: str = "") -> str:
+def authorize_url(method: str, nonce: str, redirect_uri: str, work_email: str = "") -> str:
     provider = providers()["google" if method == "sso" else method]
     if not provider.configured:
         raise OAuthError("This sign-in option isn’t available right now.")
 
-    state = {"origin": origin, "method": method}
+    state = {"nonce": nonce, "method": method}
     params = {
         "client_id": provider.client_id,
         "redirect_uri": redirect_uri,
@@ -133,20 +134,22 @@ def sign_in(state: dict, code: str, redirect_uri: str):
     return user
 
 
-def issue_ticket(user, method: str) -> str:
-    return signing.dumps({"user": user.pk, "method": method}, salt="oauth-ticket")
+def park_result(nonce: str, *, user=None, method: str = "", error: str = "") -> None:
+    value = {"user": user.pk, "method": method} if user else {"error": error}
+    cache.set(_result_key(nonce), value, RESULT_MAX_AGE)
 
 
-def redeem_ticket(ticket: str) -> tuple[int, str]:
-    """Returns `(user_id, method)`. Each ticket works once, within two minutes."""
-    try:
-        data = signing.loads(ticket, salt="oauth-ticket", max_age=TICKET_MAX_AGE)
-    except signing.BadSignature as exc:
-        raise OAuthError("This sign-in has expired. Please try again.") from exc
-    used_key = "oauth-ticket-used:" + hashlib.sha256(ticket.encode()).hexdigest()
-    if not cache.add(used_key, True, TICKET_MAX_AGE):
-        raise OAuthError("This sign-in was already used. Please try again.")
-    return data["user"], data["method"]
+def claim_result(nonce: str) -> dict | None:
+    """The parked result for this nonce, handed out once; None while the customer is still signing in."""
+    key = _result_key(nonce)
+    result = cache.get(key)
+    if result is None or not cache.delete(key):  # delete() is False if another request claimed it first
+        return None
+    return result
+
+
+def _result_key(nonce: str) -> str:
+    return f"oauth-result:{nonce}"
 
 
 def _exchange_code(provider: Provider, code: str, redirect_uri: str) -> str:

@@ -4,7 +4,6 @@ Each test replaces the HTTP call at the module boundary, so we check how we use 
 provider's answers without depending on the provider being up.
 """
 
-import re
 import uuid
 from decimal import Decimal
 from types import SimpleNamespace
@@ -21,9 +20,6 @@ from orders.payments import mpesa
 from tests.helpers import order_payload, post_order
 
 pytestmark = [pytest.mark.django_db, pytest.mark.usefixtures("seeded", "integrations")]
-
-CHECKOUT = "http://localhost:5173"
-
 
 # --- Domain registry ----------------------------------------------------------
 
@@ -95,22 +91,27 @@ def test_address_suggestions_come_from_photon_billing_country_first(api, monkeyp
 # --- OAuth ----------------------------------------------------------------------
 
 
-def start(api, method, **params):
-    return api.get(f"/api/v1/auth/oauth/{method}/start/", {"origin": CHECKOUT, **params})
+def start(api, method, nonce=None, **params):
+    return api.get(f"/api/v1/auth/oauth/{method}/start/", {"nonce": nonce or uuid.uuid4().hex, **params})
 
 
 def callback(api, provider, state, code="one-time-code"):
     return api.get(f"/api/v1/auth/oauth/{provider}/callback/", {"state": state, "code": code})
 
 
-def ticket_from(page) -> str:
-    return re.search(r'"ticket": "([^"]+)"', page.content.decode()).group(1)
+def poll(api, nonce):
+    return api.post("/api/v1/auth/oauth/result/", {"nonce": nonce}, format="json")
+
+
+def state_from(redirect) -> str:
+    return parse_qs(urlparse(redirect["Location"]).query)["state"][0]
 
 
 def test_github_sign_in_end_to_end(api, monkeypatch):
-    redirect = start(api, "github")
+    nonce = uuid.uuid4().hex
+    redirect = start(api, "github", nonce)
     assert redirect.status_code == 302 and redirect["Location"].startswith("https://github.com/login/oauth/authorize")
-    state = parse_qs(urlparse(redirect["Location"]).query)["state"][0]
+    assert poll(api, nonce).status_code == 202  # the customer is still on GitHub
 
     profiles = {
         "https://api.github.com/user/emails": [{"email": "Dev@Example.com", "primary": True, "verified": True}],
@@ -118,26 +119,26 @@ def test_github_sign_in_end_to_end(api, monkeypatch):
     }
     monkeypatch.setattr(oauth, "_exchange_code", lambda provider, code, redirect_uri: "gh-access-token")
     monkeypatch.setattr(oauth, "_get_json", lambda url, token: profiles[url])
+    assert callback(api, "github", state_from(redirect)).status_code == 200
 
-    page = callback(api, "github", state)
-    assert page.status_code == 200
-    ticket = ticket_from(page)
-
-    session = api.post("/api/v1/auth/oauth/ticket/", {"ticket": ticket}, format="json")
+    session = poll(api, nonce)
     assert session.status_code == 200 and session.json()["user"]["email"] == "dev@example.com"
     assert get_user_model().objects.get(email="dev@example.com").get_full_name() == "Wanjiku Kamau"
-    assert api.post("/api/v1/auth/oauth/ticket/", {"ticket": ticket}, format="json").status_code == 400  # single use
+    assert poll(api, nonce).status_code == 202  # handed out once only
 
 
-def test_sign_in_refuses_unknown_origins_and_forged_state(api):
-    assert api.get("/api/v1/auth/oauth/github/start/", {"origin": "https://evil.example"}).status_code == 400
+def test_sign_in_rejects_bad_nonces_and_forged_state(api):
+    assert start(api, "github", nonce="short").status_code == 400
     assert callback(api, "github", "forged-state").status_code == 400
 
 
 def test_company_sso_requires_a_work_domain_and_checks_it(api, monkeypatch):
-    assert start(api, "sso", email="me@gmail.com").status_code == 400
+    personal = uuid.uuid4().hex
+    assert start(api, "sso", personal, email="me@gmail.com").status_code == 400
+    assert "work email" in poll(api, personal).json()["detail"]
 
-    redirect = start(api, "sso", email="amina@acme.co.ke")
+    nonce = uuid.uuid4().hex
+    redirect = start(api, "sso", nonce, email="amina@acme.co.ke")
     params = parse_qs(urlparse(redirect["Location"]).query)
     assert params["hd"] == ["acme.co.ke"] and params["login_hint"] == ["amina@acme.co.ke"]
 
@@ -145,8 +146,8 @@ def test_company_sso_requires_a_work_domain_and_checks_it(api, monkeypatch):
     monkeypatch.setattr(
         oauth, "_get_json", lambda url, token: {"email": "amina@gmail.com", "email_verified": True, "hd": None}
     )
-    page = callback(api, "google", params["state"][0])
-    assert page.status_code == 400 and "acme.co.ke" in page.content.decode()
+    assert callback(api, "google", state_from(redirect)).status_code == 400
+    assert "acme.co.ke" in poll(api, nonce).json()["detail"]
 
 
 def test_unconfigured_providers_are_not_offered(api, settings):

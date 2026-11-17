@@ -10,18 +10,13 @@
   </style>
 </head>
 <body>
-  <p>{% if error %}{{ error }}{% else %}Signed in. Taking you back to your checkout…{% endif %}</p>
-  {{ result|json_script:"oauth-result" }}
-  <script>
-    // Hand the result to the checkout window that opened this popup, then close.
-    // Without an opener (popup blocked, so this opened as a page), go back to the checkout instead.
-    const result = JSON.parse(document.getElementById('oauth-result').textContent);
-    if (result.origin && window.opener) {
-      window.opener.postMessage({ type: 'cloudoon:oauth', ticket: result.ticket, error: result.error }, result.origin);
-      window.close();
-    } else if (result.origin && result.ticket) {
-      window.location.replace(result.origin + '/#oauth_ticket=' + encodeURIComponent(result.ticket));
-    }
-  </script>
+  {% if error %}
+    <p>{{ error }}</p>
+    <p>You can close this window.</p>
+  {% else %}
+    <p>You’re signed in. Return to your checkout; this window will close.</p>
+    {# The checkout picks the sign-in up by polling, so this page only needs to get out of the way. #}
+    <script>setTimeout(() => window.close(), 600);</script>
+  {% endif %}
 </body>
 </html>

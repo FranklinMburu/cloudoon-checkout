@@ -1,3 +1,5 @@
+import re
+
 from django.contrib.auth import authenticate, get_user_model
 from django.shortcuts import redirect, render
 from django.urls import reverse
@@ -10,7 +12,6 @@ from rest_framework.views import APIView
 
 from accounts import address_lookup, oauth
 from accounts.serializers import LoginSerializer, RegisterSerializer, user_payload
-from config.origins import is_allowed_origin
 
 User = get_user_model()
 
@@ -46,23 +47,25 @@ class LoginView(APIView):
         return session_response(user, "password")
 
 
+NONCE_PATTERN = re.compile(r"^[A-Za-z0-9_-]{32,64}$")
+
+
 class OAuthStartView(View):
     """Opened in a popup by the checkout: sends the customer to Google or GitHub."""
 
     def get(self, request, method: str):
-        origin = request.GET.get("origin", "")
-        if not is_allowed_origin(origin):
-            return _popup_page(
-                request, origin=None, error="This sign-in link isn’t valid. Close this window and try again."
-            )
-        if method not in oauth.enabled_methods():
-            return _popup_page(request, origin, error="This sign-in option isn’t available right now.")
+        nonce = request.GET.get("nonce", "")
+        if not NONCE_PATTERN.match(nonce):
+            return _popup_page(request, error="This sign-in link isn’t valid. Close this window and try again.")
         try:
+            if method not in oauth.enabled_methods():
+                raise oauth.OAuthError("This sign-in option isn’t available right now.")
             return redirect(
-                oauth.authorize_url(method, origin, _callback_url(request, method), request.GET.get("email", ""))
+                oauth.authorize_url(method, nonce, _callback_url(request, method), request.GET.get("email", ""))
             )
         except oauth.OAuthError as exc:
-            return _popup_page(request, origin, error=str(exc))
+            oauth.park_result(nonce, error=str(exc))
+            return _popup_page(request, error=str(exc))
 
 
 class OAuthCallbackView(View):
@@ -72,29 +75,33 @@ class OAuthCallbackView(View):
         try:
             state = oauth.read_state(request.GET.get("state", ""))
         except oauth.OAuthError as exc:
-            return _popup_page(request, origin=None, error=str(exc))
-        if not is_allowed_origin(state["origin"]):
-            return _popup_page(request, origin=None, error="This sign-in link isn’t valid.")
-        if "error" in request.GET or "code" not in request.GET:
-            return _popup_page(request, state["origin"], error="Sign-in was cancelled.")
+            return _popup_page(request, error=str(exc))
         try:
+            if "code" not in request.GET:
+                raise oauth.OAuthError("Sign-in was cancelled.")
             user = oauth.sign_in(state, request.GET["code"], _callback_url(request, state["method"]))
         except oauth.OAuthError as exc:
-            return _popup_page(request, state["origin"], error=str(exc))
-        return _popup_page(request, state["origin"], ticket=oauth.issue_ticket(user, state["method"]))
+            oauth.park_result(state["nonce"], error=str(exc))
+            return _popup_page(request, error=str(exc))
+        oauth.park_result(state["nonce"], user=user, method=state["method"])
+        return _popup_page(request)
 
 
-class OAuthTicketView(APIView):
-    """The checkout trades the popup's single-use ticket for an API token."""
+class OAuthResultView(APIView):
+    """Polled by the checkout while the popup is open. 202 until the customer finishes signing in."""
 
-    throttle_scope = "auth"
+    throttle_scope = "oauth-poll"
 
     def post(self, request):
-        try:
-            user_id, method = oauth.redeem_ticket(str(request.data.get("ticket", "")))
-        except oauth.OAuthError as exc:
-            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
-        return session_response(User.objects.get(pk=user_id), method)
+        nonce = str(request.data.get("nonce", ""))
+        if not NONCE_PATTERN.match(nonce):
+            return Response({"detail": "Invalid sign-in request."}, status=status.HTTP_400_BAD_REQUEST)
+        result = oauth.claim_result(nonce)
+        if result is None:
+            return Response({"status": "waiting"}, status=status.HTTP_202_ACCEPTED)
+        if "error" in result:
+            return Response({"detail": result["error"]}, status=status.HTTP_400_BAD_REQUEST)
+        return session_response(User.objects.get(pk=result["user"]), result["method"])
 
 
 def _callback_url(request, method: str) -> str:
@@ -102,16 +109,8 @@ def _callback_url(request, method: str) -> str:
     return request.build_absolute_uri(reverse("oauth-callback", args=[provider]))
 
 
-def _popup_page(request, origin: str | None, *, error: str = "", ticket: str = ""):
-    response = render(
-        request,
-        "accounts/oauth_popup.html",
-        {"error": error, "result": {"origin": origin, "error": error, "ticket": ticket}},
-        status=400 if error else 200,
-    )
-    # The popup must keep its link to the checkout window to hand back the result.
-    response["Cross-Origin-Opener-Policy"] = "unsafe-none"
-    return response
+def _popup_page(request, *, error: str = ""):
+    return render(request, "accounts/oauth_popup.html", {"error": error}, status=400 if error else 200)
 
 
 class LogoutView(APIView):
