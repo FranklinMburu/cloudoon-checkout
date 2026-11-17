@@ -1,54 +1,55 @@
 # Cloudoon Checkout
 
-End-to-end web hosting product selection and checkout: shared, VPS, dedicated and cloud hosting, domains, add-ons, multi-currency billing cycles, inline authentication and a persistent order summary.
+A three-step checkout for web hosting: shared, VPS, dedicated and cloud hosting, plus domains and add-ons. It has multi-currency pricing, billing cycles of 1, 12, 24 or 36 months, sign-in on the same page, and an order summary that stays on screen.
+
+**Try it:** [cloudoon-checkout.onrender.com](https://cloudoon-checkout.onrender.com) · **API:** [cloudoon-checkout-api.onrender.com/api/v1/health/](https://cloudoon-checkout-api.onrender.com/api/v1/health/)
+
+| Try | Use |
+|---|---|
+| Card (Stripe test mode) | `4242 4242 4242 4242`, any future date, any CVC · declined: `4000 0000 0000 0002` |
+| Returning customer | `demo@cloudoon.com` / `Demo1234!`, or Google / GitHub sign-in |
+| Promo codes | `WELCOME10`, `HOSTING25`, `SUMMER24` (expired) |
+
+## How it's built
 
 | Part | Stack | Folder |
 |---|---|---|
-| Frontend | React + TypeScript + Tailwind (runs in Google AI Studio or Vite) | [`frontend/`](frontend/) |
-| Backend | Django + Django REST Framework + PostgreSQL | [`backend/`](backend/) |
+| Frontend | React 19, TypeScript, Tailwind | [`frontend/`](frontend/) |
+| Backend | Django 5, Django REST Framework, PostgreSQL | [`backend/`](backend/) |
 
-The backend is the single source of truth: the catalog, prices, currencies, tax rates, promo codes, quotes, domain availability, accounts and orders all come from the API. The frontend only displays what the API returns.
-
-- Frontend details, design decisions and demo data: [`frontend/README.md`](frontend/README.md)
-- Backend API, setup and design notes: [`backend/README.md`](backend/README.md)
-- How the pieces fit together: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
-- Working on the code: [`CONTRIBUTING.md`](CONTRIBUTING.md)
-
-## Status
-
-- [x] Frontend: 3-step checkout, all UI states, 375px & 1440px
-- [x] Backend: Django REST API, PostgreSQL schema, token auth, idempotent orders
-- [x] Frontend reads everything from the API (no product or price data in the browser)
-- [x] CI: Ruff, Django checks, migration check, tests on PostgreSQL, ESLint, frontend type-check and build
-- [x] Deployed on Render: [checkout](https://cloudoon-checkout.onrender.com) · [API](https://cloudoon-checkout-api.onrender.com/api/v1/) (free tier: the first request after idle takes ~50 s)
-
-## Google AI Studio
-
-AI Studio imports an app from the root of a branch, so the [`ai-studio`](../../tree/ai-studio) branch mirrors `frontend/`. A GitHub Action rebuilds it on every push to `main`. In AI Studio, choose **Import from GitHub**, pick this repository and the `ai-studio` branch.
-
-## Quick start
-
-```bash
-docker compose up -d                                   # PostgreSQL
-cd backend && pip install -r requirements-dev.txt
-export DEBUG=True                                      # settings default to production-safe
-python manage.py migrate && python manage.py seed && python manage.py runserver
-cd ../frontend && npm install && VITE_API_URL=http://localhost:8000 npm run dev
-```
+- **The backend owns all data and every calculation:** catalog, prices, tax, promos, quotes and orders. The browser has no prices; it shows what the API returns.
+- **Money is `Decimal`** on the server and a string in JSON. It is never a float.
+- **Orders are re-priced on the server and idempotent.** The `Idempotency-Key` header and a unique database constraint make sure a double click or a retry can never charge twice.
+- More detail: [architecture](docs/ARCHITECTURE.md), [backend and API](backend/README.md), [frontend and design decisions](frontend/README.md), [contributing](CONTRIBUTING.md).
 
 ## Integrations
 
 | What | Provider | Code |
 |---|---|---|
-| Card payments | Stripe (test mode): Stripe.js Elements in the browser, PaymentIntents on the server | `backend/orders/payments/card.py` |
-| M-Pesa | Safaricom Daraja sandbox: STK push, callback, status query | `backend/orders/payments/mpesa.py` |
-| PayPal | PayPal Orders v2 sandbox | `backend/orders/payments/paypal.py` |
-| Sign-in | Google, GitHub and Google Workspace SSO (OAuth 2.0 authorization code) | `backend/accounts/oauth.py` |
-| Domain availability | The registries themselves: RDAP, WHOIS for `.ke` | `backend/domains/registry.py` |
+| Card payments | Stripe (test mode): Elements in the browser, PaymentIntents on the server | `backend/orders/payments/card.py` |
+| M-Pesa | Safaricom Daraja: STK push, callback and status query | `backend/orders/payments/mpesa.py` |
+| PayPal | PayPal Orders v2 | `backend/orders/payments/paypal.py` |
+| Sign-in | Google, GitHub and Google Workspace SSO (OAuth 2.0) | `backend/accounts/oauth.py` |
+| Domain availability | The registries: RDAP, with WHOIS for `.ke` | `backend/domains/registry.py` |
 | Address suggestions | OpenStreetMap (Photon) | `backend/accounts/address_lookup.py` |
 
-Each provider is switched on by its keys (see `render.yaml`); the checkout only offers what is configured (`GET /api/v1/config/`). Tests replace every provider at its boundary, so CI never calls them.
+Each provider is switched on by its API keys. The checkout only offers the ones that are configured (`GET /api/v1/config/`).
 
-## API tests in Postman
+## Quality checks
 
-Import [`docs/postman/`](docs/postman/) (collection + environment) and click **Run collection**: every endpoint, with status-code and body checks.
+- **CI** ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)):
+  - Backend: Ruff, Django checks, a migration check, and about 830 tests on PostgreSQL.
+  - Frontend: ESLint, then the type-check and build.
+- **Postman:** import [`docs/postman/`](docs/postman/) and click **Run collection**. Every endpoint has status-code and body checks.
+- **Google AI Studio:** the [`ai-studio`](../../tree/ai-studio) branch mirrors `frontend/`, and a GitHub Action updates it on every push. Use **Import from GitHub**, then pick that branch.
+
+## Run locally
+
+```bash
+docker compose up -d                                  # PostgreSQL
+cd backend && pip install -r requirements-dev.txt
+export DEBUG=True && python manage.py migrate && python manage.py seed && python manage.py runserver
+cd ../frontend && npm install && VITE_API_URL=http://localhost:8000 npm run dev
+```
+
+The API runs on Render's free tier. A scheduled ping keeps it awake; if it has been idle, the first request can take about 50 seconds.
