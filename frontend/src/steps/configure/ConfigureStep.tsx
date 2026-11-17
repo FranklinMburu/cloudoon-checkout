@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { useStore } from '../../state/store';
 import { Badge, CollapsibleSection } from '../../components/ui';
-import { AddonsPanel, useAddonsSummary } from './AddonsSection';
+import { AddonsPanel, useAddonsSummary } from './AddonsPanel';
 import { BillingCycleSection } from './BillingCycleSection';
-import { DomainPanel, useDomainSummary } from './DomainSection';
-import { HostingSection } from './HostingSection';
+import { DomainPanel, useDomainSummary } from './DomainPanel';
+import { HostingSection } from './hosting/HostingSection';
 
 /**
  * Step 1 — what is being bought. Hosting and billing period are always open (every order needs them);
