@@ -10,21 +10,24 @@ End-to-end web hosting product selection and checkout: shared, VPS, dedicated an
 The backend is the single source of truth: the catalog, prices, currencies, tax rates, promo codes, quotes, domain availability, accounts and orders all come from the API. The frontend only displays what the API returns.
 
 - Frontend details, design decisions and demo data: [`frontend/README.md`](frontend/README.md)
-- Architecture and build plan: [`docs/PLAN.md`](docs/PLAN.md)
+- Backend API, setup and design notes: [`backend/README.md`](backend/README.md)
+- How the pieces fit together: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
+- Working on the code: [`CONTRIBUTING.md`](CONTRIBUTING.md)
 
 ## Status
 
 - [x] Frontend: 3-step checkout, all UI states, 375px & 1440px
 - [x] Backend: Django REST API, PostgreSQL schema, token auth, idempotent orders
 - [x] Frontend reads everything from the API (no product or price data in the browser)
-- [x] CI: Django checks, migration check, 811 tests on PostgreSQL, frontend type-check and build
-- [ ] Deployment (Render: API + PostgreSQL + static frontend)
+- [x] CI: Ruff, Django checks, migration check, tests on PostgreSQL, ESLint, frontend type-check and build
+- [x] Deployed on Render: [checkout](https://cloudoon-checkout.onrender.com) · [API](https://cloudoon-checkout-api.onrender.com/api/v1/) (free tier: the first request after idle takes ~50 s)
 
 ## Quick start
 
 ```bash
 docker compose up -d                                   # PostgreSQL
 cd backend && pip install -r requirements-dev.txt
+export DEBUG=True                                      # settings default to production-safe
 python manage.py migrate && python manage.py seed && python manage.py runserver
 cd ../frontend && npm install && VITE_API_URL=http://localhost:8000 npm run dev
 ```
