@@ -239,7 +239,7 @@ def paypal_api(monkeypatch):
         if method == "POST" and path == "/v2/checkout/orders":
             orders["PP-1"] = json["purchase_units"][0]["amount"]
             return {"id": "PP-1"}
-        order_id = path.split("/")[3]
+        order_id = path.split("/")[4]  # /v2/checkout/orders/<id>[/capture]
         if method == "GET":
             return {"purchase_units": [{"amount": orders[order_id]}]}
         return {

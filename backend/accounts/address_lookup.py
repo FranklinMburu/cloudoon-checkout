@@ -56,7 +56,7 @@ def search(query: str, country: str = "", limit: int = 5) -> list[dict]:
 def _to_address(place: dict) -> dict | None:
     street = " ".join(part for part in (place.get("housenumber"), place.get("street")) if part)
     name = place.get("name")
-    line = ", ".join(part for part in (street, name) if part and part != street)
+    line = ", ".join(part for part in (street, name if name != street else "") if part)
     city = place.get("city") or place.get("town") or place.get("village") or place.get("county")
     if not line or not city or not place.get("countrycode"):
         return None

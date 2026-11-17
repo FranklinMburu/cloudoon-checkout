@@ -47,6 +47,7 @@ def place_order(*, idempotency_key: str, user, cart: dict[str, Any], billing: di
     """Returns `(order, created)`. `created` is False when this key was used before."""
     if existing := Order.objects.filter(idempotency_key=idempotency_key).first():
         refresh_payment(existing)
+        existing.refresh_from_db()
         return existing, False
 
     quote = _price(cart)
