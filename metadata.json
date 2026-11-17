@@ -1,0 +1,5 @@
+{
+  "name": "Cloudoon Checkout",
+  "description": "High-fidelity interactive prototype of an end-to-end web hosting product selection and checkout flow: shared, VPS, dedicated and cloud hosting, domains, add-ons, multi-currency billing cycles, inline authentication and a persistent order summary.",
+  "requestFramePermissions": []
+}
