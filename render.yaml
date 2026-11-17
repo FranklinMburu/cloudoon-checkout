@@ -30,6 +30,27 @@ services:
         value: https://cloudoon-checkout.onrender.com,https://aistudio.google.com,https://ai.studio
       - key: CORS_ALLOWED_ORIGIN_REGEXES
         value: ^https://[a-z0-9-]+\.(scf\.)?usercontent\.goog$
+      # Integrations: client ids are public; secrets are entered in the Render dashboard (sync: false).
+      - key: GITHUB_CLIENT_ID
+        value: Ov23liGGOU7ptv2UAtCV
+      - key: GITHUB_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: STRIPE_PUBLISHABLE_KEY
+        sync: false
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: MPESA_CONSUMER_KEY
+        sync: false
+      - key: MPESA_CONSUMER_SECRET
+        sync: false
+      - key: PAYPAL_CLIENT_ID
+        sync: false
+      - key: PAYPAL_CLIENT_SECRET
+        sync: false
 
   - type: web
     name: cloudoon-checkout
