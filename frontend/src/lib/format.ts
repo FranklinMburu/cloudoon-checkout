@@ -1,30 +1,23 @@
-import type { CurrencyCode } from '../types';
-import { getCurrency } from './pricing';
+// Display formatting only — every amount comes from the API as a decimal string.
 
+const LOCALES: Record<string, string> = { USD: 'en-US', EUR: 'de-DE', GBP: 'en-GB', KES: 'en-KE' };
 const cache = new Map<string, Intl.NumberFormat>();
 
-function formatter(code: CurrencyCode, decimals: number) {
+/** Locale-aware money: "$1,234.56", "1.234,56 €", "£1,234.56", "Ksh 1,235". */
+export function money(amount: string | number, code: string, decimals: number) {
   const key = `${code}:${decimals}`;
   if (!cache.has(key)) {
     cache.set(
       key,
-      new Intl.NumberFormat('en-US', {
+      new Intl.NumberFormat(LOCALES[code] ?? 'en-US', {
         style: 'currency',
         currency: code,
-        currencyDisplay: code === 'KES' ? 'code' : 'symbol',
         minimumFractionDigits: decimals,
         maximumFractionDigits: decimals,
       }),
     );
   }
-  return cache.get(key)!;
+  return cache.get(key)!.format(Number(amount));
 }
 
-/** "$107.64", "€99.03", "KES 13,880". Pass `precise` for small hourly rates. */
-export function money(amount: number, code: CurrencyCode, precise = false) {
-  const decimals = precise ? 3 : getCurrency(code).decimals;
-  // Narrow no-break space after "KES" keeps the code attached to the number.
-  return formatter(code, decimals).format(amount).replace(/^KES\s?/, 'KES ');
-}
-
-export const pct = (fraction: number) => `${Math.round(fraction * 100)}%`;
+export const toNumber = (amount: string | number | null | undefined) => Number(amount ?? 0);
