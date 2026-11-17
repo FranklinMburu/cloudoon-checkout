@@ -37,7 +37,3 @@ class RegisterSerializer(serializers.Serializer):
 class LoginSerializer(serializers.Serializer):
     email = serializers.EmailField()
     password = serializers.CharField(write_only=True, trim_whitespace=False)
-
-
-class OAuthSerializer(serializers.Serializer):
-    email = serializers.EmailField(required=False)

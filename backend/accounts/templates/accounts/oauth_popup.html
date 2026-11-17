@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Cloudoon sign-in</title>
+  <style>
+    body { margin: 0; min-height: 90vh; display: grid; place-items: center; padding: 24px;
+           font: 15px/1.5 system-ui, sans-serif; color: #111827; text-align: center; }
+  </style>
+</head>
+<body>
+  <p>{% if error %}{{ error }}{% else %}Signed in. Taking you back to your checkout…{% endif %}</p>
+  {{ result|json_script:"oauth-result" }}
+  <script>
+    // Hand the result to the checkout window that opened this popup, then close.
+    // Without an opener (popup blocked, so this opened as a page), go back to the checkout instead.
+    const result = JSON.parse(document.getElementById('oauth-result').textContent);
+    if (result.origin && window.opener) {
+      window.opener.postMessage({ type: 'cloudoon:oauth', ticket: result.ticket, error: result.error }, result.origin);
+      window.close();
+    } else if (result.origin && result.ticket) {
+      window.location.replace(result.origin + '/#oauth_ticket=' + encodeURIComponent(result.ticket));
+    }
+  </script>
+</body>
+</html>
