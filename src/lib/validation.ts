@@ -87,7 +87,7 @@ export function formatCardNumber(v: string) {
   return d.replace(/(.{4})/g, '$1 ').trim();
 }
 
-export function luhn(num: string) {
+function luhn(num: string) {
   const d = num.replace(/\D/g, '');
   let sum = 0;
   for (let i = 0; i < d.length; i++) {
