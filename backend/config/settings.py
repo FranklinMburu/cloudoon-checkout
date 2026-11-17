@@ -16,7 +16,8 @@ def env_list(name: str, default: str = "") -> list[str]:
     return [item.strip() for item in os.environ.get(name, default).split(",") if item.strip()]
 
 
-DEBUG = os.environ.get("DEBUG", "True").lower() == "true"
+# Fail closed: production is the default; local development sets DEBUG=True.
+DEBUG = os.environ.get("DEBUG", "False").lower() == "true"
 SECRET_KEY = os.environ.get("SECRET_KEY", "dev-only-insecure-key-change-me" if DEBUG else "")
 if not SECRET_KEY:
     raise RuntimeError("SECRET_KEY must be set when DEBUG is False")
@@ -99,6 +100,10 @@ STORAGES = {
 }
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# Throttle counters must be shared by all gunicorn workers, so production keeps them in the database.
+if not DEBUG:
+    CACHES = {"default": {"BACKEND": "django.core.cache.backends.db.DatabaseCache", "LOCATION": "django_cache"}}
 
 # --- API ---------------------------------------------------------------------
 
