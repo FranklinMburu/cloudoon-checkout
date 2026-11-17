@@ -12,6 +12,10 @@ export function BillingCycleSection() {
   const options = quote?.cycle_options;
   const current = options?.find((o) => o.months === cart.cycle);
 
+  if (cart.category === 'none') {
+    return <Section id="billing-period" title="Billing period" description="Domains are registered for a year at a time and renew yearly." />;
+  }
+
   return (
     <Section id="billing-period" title="Billing period" description="Pay for the full term today. Longer terms cost less per month.">
       <fieldset>

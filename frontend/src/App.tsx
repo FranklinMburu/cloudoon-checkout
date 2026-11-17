@@ -4,6 +4,7 @@ import { ArrowLeft, ArrowRight } from './components/icons';
 import { MobileSummaryBar, OrderSummary } from './components/OrderSummary';
 import { Button, TextButton } from './components/ui';
 import { DesignSystem } from './DesignSystem';
+import { LegalPage } from './LegalPage';
 import { useStore, type Step } from './state/store';
 import { AccountStep, CHECKOUT_FORM_ID } from './steps/account/AccountStep';
 import type { AuthMode } from './steps/account/AuthPanel';
@@ -52,6 +53,8 @@ export default function App() {
   }, [step, order]);
 
   if (route === '#design-system') return <DesignSystem />;
+  if (window.location.pathname === '/privacy') return <LegalPage page="privacy" />;
+  if (window.location.pathname === '/terms') return <LegalPage page="terms" />;
 
   if (order) {
     return (
