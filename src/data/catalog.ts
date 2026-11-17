@@ -8,15 +8,16 @@ import type { CurrencyCode, Cycle, OsId, ProductCategory, SslOption } from '../t
 export interface Currency {
   code: CurrencyCode;
   label: string;
+  symbol: string;
   rate: number; // units per 1 USD
   decimals: number;
 }
 
 export const CURRENCIES: Currency[] = [
-  { code: 'USD', label: 'US Dollar', rate: 1, decimals: 2 },
-  { code: 'EUR', label: 'Euro', rate: 0.92, decimals: 2 },
-  { code: 'GBP', label: 'British Pound', rate: 0.79, decimals: 2 },
-  { code: 'KES', label: 'Kenyan Shilling', rate: 129, decimals: 0 },
+  { code: 'USD', label: 'US Dollar', symbol: '$', rate: 1, decimals: 2 },
+  { code: 'EUR', label: 'Euro', symbol: '€', rate: 0.92, decimals: 2 },
+  { code: 'GBP', label: 'British Pound', symbol: '£', rate: 0.79, decimals: 2 },
+  { code: 'KES', label: 'Kenyan Shilling', symbol: 'KSh', rate: 129, decimals: 0 },
 ];
 
 /* ---------------------------- Billing cycles --------------------------- */

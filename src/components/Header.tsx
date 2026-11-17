@@ -39,7 +39,7 @@ export function Header({ showCurrency = true }: { showCurrency?: boolean }) {
                   className="min-h-11 cursor-pointer appearance-none rounded-lg border border-gray-300 bg-white py-2 pr-9 pl-3 text-sm font-semibold text-gray-950 hover:border-gray-400 focus:border-brand-600 focus:ring-2 focus:ring-brand-600/30 focus:outline-none"
                 >
                   {CURRENCIES.map((c) => (
-                    <option key={c.code} value={c.code}>{c.code} — {c.label}</option>
+                    <option key={c.code} value={c.code}>{c.code} ({c.symbol})</option>
                   ))}
                 </select>
                 <ChevronDown size={16} className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-gray-500" />
@@ -63,18 +63,18 @@ export function Stepper() {
   const current = checkout.step;
   return (
     <nav aria-label="Checkout progress">
-      <ol className="grid grid-cols-3 gap-2 sm:gap-4">
+      <ol className="grid grid-cols-3 gap-3 sm:gap-4">
         {STEPS.map((s) => {
           const done = s.n < current;
           const active = s.n === current;
           const content = (
             <>
               <span className={cx('h-1.5 w-full rounded-full', done || active ? 'bg-brand-600' : 'bg-gray-200')} aria-hidden="true" />
-              <span className="mt-2 flex items-center gap-2">
+              <span className="mt-2 flex w-full min-w-0 items-center gap-1.5 sm:gap-2">
                 <span className={cx('flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold', done ? 'bg-brand-600 text-white' : active ? 'border-2 border-brand-600 text-brand-700' : 'border-2 border-gray-300 text-gray-500')}>
                   {done ? <Check size={14} strokeWidth={3} /> : s.n}
                 </span>
-                <span className={cx('text-left text-sm font-semibold', active ? 'text-gray-950' : done ? 'text-brand-700' : 'text-gray-500')}>
+                <span className={cx('min-w-0 truncate text-left text-xs font-semibold sm:text-sm', active ? 'text-gray-950' : done ? 'text-brand-700' : 'text-gray-500')}>
                   <span className="sm:hidden">{s.short}</span>
                   <span className="hidden sm:inline">{s.label}</span>
                 </span>
