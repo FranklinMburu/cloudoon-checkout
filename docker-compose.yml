@@ -1,0 +1,15 @@
+# Local PostgreSQL for the Django backend: `docker compose up -d`
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: cloudoon
+      POSTGRES_PASSWORD: cloudoon
+      POSTGRES_DB: cloudoon
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:
