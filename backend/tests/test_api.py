@@ -3,50 +3,12 @@
 import uuid
 
 import pytest
-from django.core.cache import cache
-from django.core.management import call_command
 from rest_framework.test import APIClient
 
 from orders.models import Order
+from tests.helpers import DECLINED_CARD, order_payload, post_order, sign_in
 
-pytestmark = pytest.mark.django_db
-
-
-@pytest.fixture(autouse=True)
-def seeded(db):
-    cache.clear()  # throttle counters live in the cache; start every test fresh
-    call_command("seed")
-
-
-@pytest.fixture
-def api():
-    return APIClient()
-
-
-@pytest.fixture
-def cart(api):
-    return api.get("/api/v1/catalog/").json()["default_cart"]
-
-
-def order_payload(cart, **payment):
-    return {
-        "cart": cart,
-        "billing": {
-            "full_name": "Amina Wanjiru",
-            "email": "amina@example.com",
-            "phone": "+254 712 345 678",
-            "country": "KE",
-            "address": "Westlands Road",
-            "city": "Nairobi",
-            "postal_code": "00800",
-        },
-        "payment": payment or {"method": "card", "token": "tok_visa", "brand": "Visa", "last4": "4242"},
-        "accept_terms": True,
-    }
-
-
-def post_order(api, payload, key=None):
-    return api.post("/api/v1/orders/", payload, format="json", HTTP_IDEMPOTENCY_KEY=key or uuid.uuid4().hex)
+pytestmark = [pytest.mark.django_db, pytest.mark.usefixtures("seeded", "integrations")]
 
 
 # --- Catalog & pricing --------------------------------------------------------
@@ -102,16 +64,12 @@ def test_promo_validation(api, code, status, text):
     assert r.status_code == status and text in str(r.json())
 
 
-def test_domain_check(api):
-    r = api.get("/api/v1/domains/check/?q=google").json()
-    assert r["exact"] == {"name": "google.com", "tld": ".com", "available": False}
-    assert len(r["suggestions"]) == 7 and r["simulated"] is True
-    assert api.get("/api/v1/domains/check/?q=-bad-").status_code == 400
-
-
-def test_address_lookup(api):
-    results = api.get("/api/v1/addresses/?q=westlands").json()["results"]
-    assert results[0]["city"] == "Nairobi"
+def test_checkout_config_lists_what_is_switched_on(api, settings):
+    settings.PAYPAL_CLIENT_ID = ""
+    config = api.get("/api/v1/config/").json()
+    assert config["sign_in"] == ["google", "github", "sso"]
+    assert config["payments"]["methods"] == ["card", "mpesa"]
+    assert config["payments"]["stripe_publishable_key"] == "pk_test_x"
 
 
 # --- Authentication & authorization ------------------------------------------
@@ -147,17 +105,9 @@ def test_login_does_not_reveal_which_part_was_wrong(api):
     assert unknown == wrong_pw
 
 
-def test_demo_login_and_simulated_oauth(api):
-    assert (
-        api.post(
-            "/api/v1/auth/login/", {"email": "demo@cloudoon.com", "password": "Demo1234!"}, format="json"
-        ).status_code
-        == 200
-    )
-    r = api.post("/api/v1/auth/oauth/google/", {}, format="json").json()
-    assert r["simulated"] is True and r["user"]["provider"] == "google"
-    assert api.post("/api/v1/auth/oauth/sso/", {}, format="json").status_code == 400
-    assert api.post("/api/v1/auth/oauth/facebook/", {}, format="json").status_code == 404
+def test_demo_login(api):
+    login = api.post("/api/v1/auth/login/", {"email": "demo@cloudoon.com", "password": "Demo1234!"}, format="json")
+    assert login.status_code == 200
 
 
 def test_password_reset_never_reveals_accounts(api):
@@ -169,7 +119,7 @@ def test_password_reset_never_reveals_accounts(api):
 # --- Orders -------------------------------------------------------------------
 
 
-def test_order_is_repriced_on_the_server(api, cart):
+def test_order_is_repriced_on_the_server(api, cart, integrations):
     payload = order_payload(cart)
     payload["cart"]["total"] = "0.01"  # unknown fields are ignored; the server prices the cart itself
     r = post_order(api, payload)
@@ -177,9 +127,11 @@ def test_order_is_repriced_on_the_server(api, cart):
     body = r.json()
     assert body["total"] == "100.08" and body["number"].startswith("CL-")
     assert [i["line_id"] for i in body["items"]] == ["hosting"]
+    assert body["payment_label"] == "Visa ending 4242"
+    assert integrations.stripe_calls[0]["amount"] == 10008  # Stripe is charged the server total, in cents
 
 
-def test_same_idempotency_key_never_charges_twice(api, cart):
+def test_same_idempotency_key_never_charges_twice(api, cart, integrations):
     key = uuid.uuid4().hex
     first = post_order(api, order_payload(cart), key)
     again = post_order(api, order_payload(cart), key)
@@ -187,6 +139,7 @@ def test_same_idempotency_key_never_charges_twice(api, cart):
     assert first.json()["reference"] == again.json()["reference"]
     assert Order.objects.count() == 1
     assert first.json()["status"] == "paid"
+    assert len(integrations.stripe_calls) == 1
 
 
 def test_order_requires_idempotency_key(api, cart):
@@ -194,7 +147,7 @@ def test_order_requires_idempotency_key(api, cart):
 
 
 def test_declined_card_creates_no_order(api, cart):
-    r = post_order(api, order_payload(cart, method="card", token="tok_chargeDeclined"))
+    r = post_order(api, order_payload(cart, DECLINED_CARD))
     assert r.status_code == 402 and "declined" in r.json()["detail"]
     assert Order.objects.count() == 0
 
@@ -206,24 +159,28 @@ def test_terms_must_be_accepted(api, cart):
 
 
 def test_order_belongs_to_signed_in_user_and_others_cannot_read_it(api, cart):
-    token = api.post(
-        "/api/v1/auth/login/", {"email": "demo@cloudoon.com", "password": "Demo1234!"}, format="json"
-    ).json()["token"]
-    api.credentials(HTTP_AUTHORIZATION=f"Token {token}")
-    ref = post_order(api, order_payload(cart, method="mpesa", phone="0712345678")).json()["reference"]
+    sign_in(api)
+    ref = post_order(api, order_payload(cart)).json()["reference"]
     assert Order.objects.get(reference=ref).user.email == "demo@cloudoon.com"
     assert api.get(f"/api/v1/orders/{ref}/").status_code == 200
 
     other = APIClient()
-    other_token = other.post("/api/v1/auth/oauth/sso/", {"email": "someone@acme.com"}, format="json").json()["token"]
-    other.credentials(HTTP_AUTHORIZATION=f"Token {other_token}")
+    other.post("/api/v1/auth/register/", {"email": "joy@example.com", "password": "Sunrise-Nairobi-26"}, format="json")
+    sign_in(other, "joy@example.com", "Sunrise-Nairobi-26")
     assert other.get(f"/api/v1/orders/{ref}/").status_code == 404  # authorization: not your order
     assert APIClient().get(f"/api/v1/orders/{ref}/").status_code == 401  # authentication: not signed in
 
 
 def test_declined_payment_can_be_retried_with_the_same_key(api, cart):
     key = uuid.uuid4().hex
-    declined = post_order(api, order_payload(cart, method="card", token="tok_chargeDeclined"), key)
+    declined = post_order(api, order_payload(cart, DECLINED_CARD), key)
     retried = post_order(api, order_payload(cart), key)
     assert (declined.status_code, retried.status_code) == (402, 201)
     assert Order.objects.get().status == Order.Status.PAID
+
+
+def test_registering_a_domain_taken_since_the_search_is_refused(api, cart):
+    cart["domains"] = [{"name": "taken.co.ke", "mode": "register"}]
+    r = post_order(api, order_payload(cart))
+    assert r.status_code == 409 and "taken.co.ke" in r.json()["detail"]
+    assert Order.objects.count() == 0
