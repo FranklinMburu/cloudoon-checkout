@@ -1,0 +1,896 @@
+[
+  {
+    "model": "catalog.currency",
+    "pk": "USD",
+    "fields": {
+      "name": "US Dollar",
+      "symbol": "$",
+      "rate_per_usd": "1.0000",
+      "decimals": 2,
+      "sort_order": 0
+    }
+  },
+  {
+    "model": "catalog.currency",
+    "pk": "EUR",
+    "fields": {
+      "name": "Euro",
+      "symbol": "€",
+      "rate_per_usd": "0.9200",
+      "decimals": 2,
+      "sort_order": 1
+    }
+  },
+  {
+    "model": "catalog.currency",
+    "pk": "GBP",
+    "fields": {
+      "name": "British Pound",
+      "symbol": "£",
+      "rate_per_usd": "0.7900",
+      "decimals": 2,
+      "sort_order": 2
+    }
+  },
+  {
+    "model": "catalog.currency",
+    "pk": "KES",
+    "fields": {
+      "name": "Kenyan Shilling",
+      "symbol": "KSh",
+      "rate_per_usd": "129.0000",
+      "decimals": 0,
+      "sort_order": 3
+    }
+  },
+  {
+    "model": "catalog.country",
+    "pk": "KE",
+    "fields": {
+      "name": "Kenya",
+      "tax_name": "VAT",
+      "tax_rate": "0.1600",
+      "currency": "KES",
+      "sort_order": 0
+    }
+  },
+  {
+    "model": "catalog.country",
+    "pk": "US",
+    "fields": {
+      "name": "United States",
+      "tax_name": "Sales tax",
+      "tax_rate": "0.0000",
+      "currency": "USD",
+      "sort_order": 1
+    }
+  },
+  {
+    "model": "catalog.country",
+    "pk": "GB",
+    "fields": {
+      "name": "United Kingdom",
+      "tax_name": "VAT",
+      "tax_rate": "0.2000",
+      "currency": "GBP",
+      "sort_order": 2
+    }
+  },
+  {
+    "model": "catalog.country",
+    "pk": "DE",
+    "fields": {
+      "name": "Germany",
+      "tax_name": "VAT",
+      "tax_rate": "0.1900",
+      "currency": "EUR",
+      "sort_order": 3
+    }
+  },
+  {
+    "model": "catalog.country",
+    "pk": "FR",
+    "fields": {
+      "name": "France",
+      "tax_name": "VAT",
+      "tax_rate": "0.2000",
+      "currency": "EUR",
+      "sort_order": 4
+    }
+  },
+  {
+    "model": "catalog.country",
+    "pk": "NL",
+    "fields": {
+      "name": "Netherlands",
+      "tax_name": "VAT",
+      "tax_rate": "0.2100",
+      "currency": "EUR",
+      "sort_order": 5
+    }
+  },
+  {
+    "model": "catalog.country",
+    "pk": "NG",
+    "fields": {
+      "name": "Nigeria",
+      "tax_name": "VAT",
+      "tax_rate": "0.0750",
+      "currency": "USD",
+      "sort_order": 6
+    }
+  },
+  {
+    "model": "catalog.country",
+    "pk": "ZA",
+    "fields": {
+      "name": "South Africa",
+      "tax_name": "VAT",
+      "tax_rate": "0.1500",
+      "currency": "USD",
+      "sort_order": 7
+    }
+  },
+  {
+    "model": "catalog.country",
+    "pk": "UG",
+    "fields": {
+      "name": "Uganda",
+      "tax_name": "VAT",
+      "tax_rate": "0.1800",
+      "currency": "USD",
+      "sort_order": 8
+    }
+  },
+  {
+    "model": "catalog.country",
+    "pk": "TZ",
+    "fields": {
+      "name": "Tanzania",
+      "tax_name": "VAT",
+      "tax_rate": "0.1800",
+      "currency": "USD",
+      "sort_order": 9
+    }
+  },
+  {
+    "model": "catalog.productcategory",
+    "pk": "shared",
+    "fields": {
+      "name": "Shared Hosting",
+      "tagline": "Websites & online stores",
+      "sort_order": 0
+    }
+  },
+  {
+    "model": "catalog.productcategory",
+    "pk": "vps",
+    "fields": {
+      "name": "VPS",
+      "tagline": "Virtual server, root access",
+      "sort_order": 1
+    }
+  },
+  {
+    "model": "catalog.productcategory",
+    "pk": "dedicated",
+    "fields": {
+      "name": "Dedicated",
+      "tagline": "Your own physical server",
+      "sort_order": 2
+    }
+  },
+  {
+    "model": "catalog.productcategory",
+    "pk": "cloud",
+    "fields": {
+      "name": "Cloud",
+      "tagline": "Autoscaling & Kubernetes",
+      "sort_order": 3
+    }
+  },
+  {
+    "model": "catalog.cyclediscount",
+    "pk": 1,
+    "fields": {
+      "category": "shared",
+      "months": 1,
+      "percent": "0.00"
+    }
+  },
+  {
+    "model": "catalog.cyclediscount",
+    "pk": 2,
+    "fields": {
+      "category": "shared",
+      "months": 12,
+      "percent": "0.20"
+    }
+  },
+  {
+    "model": "catalog.cyclediscount",
+    "pk": 3,
+    "fields": {
+      "category": "shared",
+      "months": 24,
+      "percent": "0.30"
+    }
+  },
+  {
+    "model": "catalog.cyclediscount",
+    "pk": 4,
+    "fields": {
+      "category": "shared",
+      "months": 36,
+      "percent": "0.40"
+    }
+  },
+  {
+    "model": "catalog.cyclediscount",
+    "pk": 5,
+    "fields": {
+      "category": "vps",
+      "months": 1,
+      "percent": "0.00"
+    }
+  },
+  {
+    "model": "catalog.cyclediscount",
+    "pk": 6,
+    "fields": {
+      "category": "vps",
+      "months": 12,
+      "percent": "0.10"
+    }
+  },
+  {
+    "model": "catalog.cyclediscount",
+    "pk": 7,
+    "fields": {
+      "category": "vps",
+      "months": 24,
+      "percent": "0.15"
+    }
+  },
+  {
+    "model": "catalog.cyclediscount",
+    "pk": 8,
+    "fields": {
+      "category": "vps",
+      "months": 36,
+      "percent": "0.20"
+    }
+  },
+  {
+    "model": "catalog.cyclediscount",
+    "pk": 9,
+    "fields": {
+      "category": "dedicated",
+      "months": 1,
+      "percent": "0.00"
+    }
+  },
+  {
+    "model": "catalog.cyclediscount",
+    "pk": 10,
+    "fields": {
+      "category": "dedicated",
+      "months": 12,
+      "percent": "0.05"
+    }
+  },
+  {
+    "model": "catalog.cyclediscount",
+    "pk": 11,
+    "fields": {
+      "category": "dedicated",
+      "months": 24,
+      "percent": "0.10"
+    }
+  },
+  {
+    "model": "catalog.cyclediscount",
+    "pk": 12,
+    "fields": {
+      "category": "dedicated",
+      "months": 36,
+      "percent": "0.15"
+    }
+  },
+  {
+    "model": "catalog.cyclediscount",
+    "pk": 13,
+    "fields": {
+      "category": "cloud",
+      "months": 1,
+      "percent": "0.00"
+    }
+  },
+  {
+    "model": "catalog.cyclediscount",
+    "pk": 14,
+    "fields": {
+      "category": "cloud",
+      "months": 12,
+      "percent": "0.10"
+    }
+  },
+  {
+    "model": "catalog.cyclediscount",
+    "pk": 15,
+    "fields": {
+      "category": "cloud",
+      "months": 24,
+      "percent": "0.15"
+    }
+  },
+  {
+    "model": "catalog.cyclediscount",
+    "pk": 16,
+    "fields": {
+      "category": "cloud",
+      "months": 36,
+      "percent": "0.20"
+    }
+  },
+  {
+    "model": "catalog.sharedplan",
+    "pk": "web",
+    "fields": {
+      "name": "Web",
+      "description": "A personal or small business site.",
+      "monthly_usd": "5.99",
+      "features": [
+        "1 website",
+        "25 GB NVMe storage",
+        "Unmetered bandwidth",
+        "Free SSL certificate",
+        "Weekly backups"
+      ],
+      "is_popular": false,
+      "sort_order": 0
+    }
+  },
+  {
+    "model": "catalog.sharedplan",
+    "pk": "wordpress",
+    "fields": {
+      "name": "WordPress",
+      "description": "WordPress installed and kept updated.",
+      "monthly_usd": "8.99",
+      "features": [
+        "3 websites",
+        "50 GB NVMe storage",
+        "Unmetered bandwidth",
+        "Free SSL certificate",
+        "Automatic WordPress updates",
+        "Staging site"
+      ],
+      "is_popular": true,
+      "sort_order": 1
+    }
+  },
+  {
+    "model": "catalog.sharedplan",
+    "pk": "woocommerce",
+    "fields": {
+      "name": "WooCommerce",
+      "description": "An online store, ready to sell.",
+      "monthly_usd": "14.99",
+      "features": [
+        "10 websites",
+        "100 GB NVMe storage",
+        "Unmetered bandwidth",
+        "Free SSL certificate",
+        "WooCommerce pre-installed",
+        "Double CPU & RAM"
+      ],
+      "is_popular": false,
+      "sort_order": 2
+    }
+  },
+  {
+    "model": "catalog.vpspricing",
+    "pk": 1,
+    "fields": {
+      "per_cpu": "4.00",
+      "per_ram_gb": "2.00",
+      "per_storage_gb": "0.0500",
+      "managed_fee": "25.00",
+      "cpu_min": 1,
+      "cpu_max": 16,
+      "ram_steps": [
+        1,
+        2,
+        4,
+        8,
+        16,
+        32,
+        64
+      ],
+      "storage_min": 25,
+      "storage_max": 800,
+      "storage_step": 25,
+      "managed_features": [
+        "24/7 server monitoring",
+        "Security patching & updates",
+        "Control panel installed",
+        "Expert help with server issues"
+      ],
+      "unmanaged_features": [
+        "Full root / admin access",
+        "You install and maintain software",
+        "Infrastructure support only"
+      ]
+    }
+  },
+  {
+    "model": "catalog.operatingsystem",
+    "pk": "ubuntu",
+    "fields": {
+      "name": "Ubuntu",
+      "version": "24.04 LTS",
+      "monthly_usd": "0.00",
+      "min_cpu": 1,
+      "min_ram_gb": 1,
+      "sort_order": 0
+    }
+  },
+  {
+    "model": "catalog.operatingsystem",
+    "pk": "almalinux",
+    "fields": {
+      "name": "AlmaLinux",
+      "version": "9",
+      "monthly_usd": "0.00",
+      "min_cpu": 1,
+      "min_ram_gb": 1,
+      "sort_order": 1
+    }
+  },
+  {
+    "model": "catalog.operatingsystem",
+    "pk": "windows",
+    "fields": {
+      "name": "Windows Server",
+      "version": "2022 Standard",
+      "monthly_usd": "18.00",
+      "min_cpu": 2,
+      "min_ram_gb": 4,
+      "sort_order": 2
+    }
+  },
+  {
+    "model": "catalog.datacenter",
+    "pk": "nbo",
+    "fields": {
+      "city": "Nairobi",
+      "country": "Kenya",
+      "sort_order": 0
+    }
+  },
+  {
+    "model": "catalog.datacenter",
+    "pk": "jnb",
+    "fields": {
+      "city": "Johannesburg",
+      "country": "South Africa",
+      "sort_order": 1
+    }
+  },
+  {
+    "model": "catalog.datacenter",
+    "pk": "fra",
+    "fields": {
+      "city": "Frankfurt",
+      "country": "Germany",
+      "sort_order": 2
+    }
+  },
+  {
+    "model": "catalog.datacenter",
+    "pk": "lon",
+    "fields": {
+      "city": "London",
+      "country": "United Kingdom",
+      "sort_order": 3
+    }
+  },
+  {
+    "model": "catalog.datacenter",
+    "pk": "iad",
+    "fields": {
+      "city": "Ashburn",
+      "country": "United States",
+      "sort_order": 4
+    }
+  },
+  {
+    "model": "catalog.dedicatedserver",
+    "pk": "xeon-e",
+    "fields": {
+      "name": "Intel Xeon E-2388G",
+      "cpu": "8 cores / 16 threads · 3.2 GHz",
+      "ram": "32 GB DDR4 ECC",
+      "storage": "2 × 960 GB NVMe (RAID 1)",
+      "monthly_usd": "129.00",
+      "out_of_stock_at": [],
+      "sort_order": 0
+    }
+  },
+  {
+    "model": "catalog.dedicatedserver",
+    "pk": "epyc-4344p",
+    "fields": {
+      "name": "AMD EPYC 4344P",
+      "cpu": "8 cores / 16 threads · 3.8 GHz",
+      "ram": "64 GB DDR5 ECC",
+      "storage": "2 × 1.92 TB NVMe (RAID 1)",
+      "monthly_usd": "179.00",
+      "out_of_stock_at": [],
+      "sort_order": 1
+    }
+  },
+  {
+    "model": "catalog.dedicatedserver",
+    "pk": "epyc-9354p",
+    "fields": {
+      "name": "AMD EPYC 9354P",
+      "cpu": "32 cores / 64 threads · 3.25 GHz",
+      "ram": "256 GB DDR5 ECC",
+      "storage": "2 × 3.84 TB NVMe (RAID 1)",
+      "monthly_usd": "449.00",
+      "out_of_stock_at": [
+        "nbo"
+      ],
+      "sort_order": 2
+    }
+  },
+  {
+    "model": "catalog.bandwidthpackage",
+    "pk": "bw-10",
+    "fields": {
+      "name": "10 TB at 1 Gbps",
+      "monthly_usd": "0.00",
+      "is_default": true,
+      "sort_order": 0
+    }
+  },
+  {
+    "model": "catalog.bandwidthpackage",
+    "pk": "bw-50",
+    "fields": {
+      "name": "50 TB at 1 Gbps",
+      "monthly_usd": "29.00",
+      "is_default": false,
+      "sort_order": 1
+    }
+  },
+  {
+    "model": "catalog.bandwidthpackage",
+    "pk": "bw-unmetered",
+    "fields": {
+      "name": "Unmetered at 1 Gbps",
+      "monthly_usd": "79.00",
+      "is_default": false,
+      "sort_order": 2
+    }
+  },
+  {
+    "model": "catalog.bandwidthpackage",
+    "pk": "bw-10g",
+    "fields": {
+      "name": "100 TB at 10 Gbps",
+      "monthly_usd": "149.00",
+      "is_default": false,
+      "sort_order": 3
+    }
+  },
+  {
+    "model": "catalog.cloudsize",
+    "pk": "c1",
+    "fields": {
+      "name": "Small",
+      "cpu": 1,
+      "ram_gb": 2,
+      "storage_gb": 40,
+      "monthly_usd": "12.00",
+      "sort_order": 0
+    }
+  },
+  {
+    "model": "catalog.cloudsize",
+    "pk": "c2",
+    "fields": {
+      "name": "Medium",
+      "cpu": 2,
+      "ram_gb": 4,
+      "storage_gb": 80,
+      "monthly_usd": "24.00",
+      "sort_order": 1
+    }
+  },
+  {
+    "model": "catalog.cloudsize",
+    "pk": "c4",
+    "fields": {
+      "name": "Large",
+      "cpu": 4,
+      "ram_gb": 8,
+      "storage_gb": 160,
+      "monthly_usd": "48.00",
+      "sort_order": 2
+    }
+  },
+  {
+    "model": "catalog.cloudsize",
+    "pk": "c8",
+    "fields": {
+      "name": "X-Large",
+      "cpu": 8,
+      "ram_gb": 16,
+      "storage_gb": 320,
+      "monthly_usd": "96.00",
+      "sort_order": 3
+    }
+  },
+  {
+    "model": "catalog.scalingpreset",
+    "pk": "fixed",
+    "fields": {
+      "name": "Fixed",
+      "min_instances": 1,
+      "max_instances": 1,
+      "description": "Always 1 instance. Predictable cost.",
+      "sort_order": 0
+    }
+  },
+  {
+    "model": "catalog.scalingpreset",
+    "pk": "balanced",
+    "fields": {
+      "name": "Balanced",
+      "min_instances": 2,
+      "max_instances": 4,
+      "description": "Adds instances above 70% CPU.",
+      "sort_order": 1
+    }
+  },
+  {
+    "model": "catalog.scalingpreset",
+    "pk": "performance",
+    "fields": {
+      "name": "Performance",
+      "min_instances": 3,
+      "max_instances": 10,
+      "description": "Adds instances above 60% CPU.",
+      "sort_order": 2
+    }
+  },
+  {
+    "model": "catalog.addon",
+    "pk": "backups",
+    "fields": {
+      "name": "Daily backups",
+      "description": "30 days of one-click restore points",
+      "monthly_usd": "2.99",
+      "sort_order": 0
+    }
+  },
+  {
+    "model": "catalog.addon",
+    "pk": "cdn",
+    "fields": {
+      "name": "CDN",
+      "description": "Faster pages from edge locations near visitors",
+      "monthly_usd": "4.99",
+      "sort_order": 1
+    }
+  },
+  {
+    "model": "catalog.addon",
+    "pk": "ddos-advanced",
+    "fields": {
+      "name": "Advanced DDoS protection",
+      "description": "Adds layer-7 filtering. Standard protection is included.",
+      "monthly_usd": "9.99",
+      "sort_order": 2
+    }
+  },
+  {
+    "model": "catalog.addon",
+    "pk": "email-mailbox",
+    "fields": {
+      "name": "Professional email",
+      "description": "50 GB per mailbox",
+      "monthly_usd": "1.49",
+      "sort_order": 3
+    }
+  },
+  {
+    "model": "catalog.addon",
+    "pk": "k8s-control-plane",
+    "fields": {
+      "name": "Managed Kubernetes",
+      "description": "We run the control plane, upgrades and monitoring.",
+      "monthly_usd": "20.00",
+      "sort_order": 4
+    }
+  },
+  {
+    "model": "catalog.addon",
+    "pk": "k8s-load-balancer",
+    "fields": {
+      "name": "Load balancer",
+      "description": "1 public IP, TLS termination",
+      "monthly_usd": "10.00",
+      "sort_order": 5
+    }
+  },
+  {
+    "model": "catalog.addon",
+    "pk": "k8s-registry",
+    "fields": {
+      "name": "Container registry",
+      "description": "50 GB private image storage",
+      "monthly_usd": "5.00",
+      "sort_order": 6
+    }
+  },
+  {
+    "model": "catalog.ssloption",
+    "pk": "free",
+    "fields": {
+      "name": "Standard SSL",
+      "description": "Domain validated (Let's Encrypt)",
+      "monthly_usd": "0.00",
+      "sort_order": 0
+    }
+  },
+  {
+    "model": "catalog.ssloption",
+    "pk": "wildcard",
+    "fields": {
+      "name": "Wildcard SSL",
+      "description": "Covers all subdomains (shop., blog.)",
+      "monthly_usd": "5.99",
+      "sort_order": 1
+    }
+  },
+  {
+    "model": "catalog.ssloption",
+    "pk": "ov",
+    "fields": {
+      "name": "Business SSL (OV)",
+      "description": "Verified company name in the certificate",
+      "monthly_usd": "8.99",
+      "sort_order": 2
+    }
+  },
+  {
+    "model": "catalog.tld",
+    "pk": ".com",
+    "fields": {
+      "register_usd": "11.99",
+      "renew_usd": "14.99",
+      "transfer_usd": "11.99",
+      "privacy_supported": true,
+      "free_with_hosting": true,
+      "sort_order": 0
+    }
+  },
+  {
+    "model": "catalog.tld",
+    "pk": ".net",
+    "fields": {
+      "register_usd": "13.99",
+      "renew_usd": "16.99",
+      "transfer_usd": "13.99",
+      "privacy_supported": true,
+      "free_with_hosting": true,
+      "sort_order": 1
+    }
+  },
+  {
+    "model": "catalog.tld",
+    "pk": ".org",
+    "fields": {
+      "register_usd": "10.99",
+      "renew_usd": "15.99",
+      "transfer_usd": "10.99",
+      "privacy_supported": true,
+      "free_with_hosting": true,
+      "sort_order": 2
+    }
+  },
+  {
+    "model": "catalog.tld",
+    "pk": ".co.ke",
+    "fields": {
+      "register_usd": "9.99",
+      "renew_usd": "9.99",
+      "transfer_usd": "9.99",
+      "privacy_supported": false,
+      "free_with_hosting": true,
+      "sort_order": 3
+    }
+  },
+  {
+    "model": "catalog.tld",
+    "pk": ".africa",
+    "fields": {
+      "register_usd": "14.99",
+      "renew_usd": "19.99",
+      "transfer_usd": "14.99",
+      "privacy_supported": true,
+      "free_with_hosting": false,
+      "sort_order": 4
+    }
+  },
+  {
+    "model": "catalog.tld",
+    "pk": ".io",
+    "fields": {
+      "register_usd": "39.99",
+      "renew_usd": "49.99",
+      "transfer_usd": "39.99",
+      "privacy_supported": true,
+      "free_with_hosting": false,
+      "sort_order": 5
+    }
+  },
+  {
+    "model": "catalog.tld",
+    "pk": ".dev",
+    "fields": {
+      "register_usd": "14.99",
+      "renew_usd": "16.99",
+      "transfer_usd": "14.99",
+      "privacy_supported": true,
+      "free_with_hosting": false,
+      "sort_order": 6
+    }
+  },
+  {
+    "model": "catalog.tld",
+    "pk": ".store",
+    "fields": {
+      "register_usd": "2.99",
+      "renew_usd": "49.99",
+      "transfer_usd": "49.99",
+      "privacy_supported": true,
+      "free_with_hosting": false,
+      "sort_order": 7
+    }
+  },
+  {
+    "model": "catalog.promo",
+    "pk": "WELCOME10",
+    "fields": {
+      "label": "10% off your first term",
+      "percent": "0.10",
+      "applies_to": "all",
+      "valid_until": null
+    }
+  },
+  {
+    "model": "catalog.promo",
+    "pk": "HOSTING25",
+    "fields": {
+      "label": "25% off hosting, first term",
+      "percent": "0.25",
+      "applies_to": "hosting",
+      "valid_until": null
+    }
+  },
+  {
+    "model": "catalog.promo",
+    "pk": "SUMMER24",
+    "fields": {
+      "label": "Summer sale",
+      "percent": "0.30",
+      "applies_to": "all",
+      "valid_until": "2024-08-31"
+    }
+  }
+]
