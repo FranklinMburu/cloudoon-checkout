@@ -1,17 +1,12 @@
-"""Domain availability.
-
-SIMULATED registry: a real deployment would call the registrar's API (e.g. an EPP
-`check` command) or RDAP. This stand-in is deterministic so demos and tests behave
-the same every time: well-known brands and roughly one in four other names are taken.
-"""
+"""Domain search: turn what the customer typed into a name, then ask the registries."""
 
 import re
+from concurrent.futures import ThreadPoolExecutor
 
+from domains import registry
 from pricing.catalog import Catalog
 
 DEFAULT_TLD = ".com"
-TAKEN_LABELS = {"google", "facebook", "amazon", "cloudoon", "safaricom", "microsoft", "apple", "test", "shop"}
-TLDS_STILL_FREE_FOR_BRANDS = {".africa", ".store"}
 LABEL_RE = re.compile(r"^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$")
 
 
@@ -19,10 +14,8 @@ class InvalidDomainQueryError(ValueError):
     """The search text can't be turned into a domain name."""
 
 
-def is_available(label: str, tld: str) -> bool:
-    if label in TAKEN_LABELS:
-        return tld in TLDS_STILL_FREE_FOR_BRANDS
-    return _stable_hash(label + tld) % 4 != 0
+class DomainLookupUnavailableError(Exception):
+    """The registry for the searched name couldn't be reached."""
 
 
 def normalize(query: str) -> str:
@@ -45,19 +38,23 @@ def check(catalog: Catalog, query: str) -> dict:
     if not LABEL_RE.match(label):
         raise InvalidDomainQueryError("Use letters, numbers and hyphens only, and don’t start or end with a hyphen.")
 
-    def result(extension: str) -> dict:
-        return {"name": label + extension, "tld": extension, "available": is_available(label, extension)}
+    names = [label + tld] + [label + extension for extension in catalog.tlds if extension != tld]
+    with ThreadPoolExecutor(max_workers=len(names)) as pool:
+        answers = dict(zip(names, pool.map(_registered_or_none, names), strict=True))
 
-    return {
-        "exact": result(tld),
-        "suggestions": [result(extension) for extension in catalog.tlds if extension != tld],
-        "simulated": True,
-    }
+    exact = label + tld
+    if answers[exact] is None:
+        raise DomainLookupUnavailableError(f"We couldn’t reach the registry for {tld} just now. Try again in a moment.")
+
+    def result(name: str) -> dict:
+        return {"name": name, "tld": name[len(label) :], "available": not answers[name]}
+
+    # A suggestion whose registry didn't answer is left out rather than guessed.
+    return {"exact": result(exact), "suggestions": [result(n) for n in names[1:] if answers[n] is not None]}
 
 
-def _stable_hash(text: str) -> int:
-    """Same result on every run and machine (unlike Python's salted `hash()`)."""
-    value = 0
-    for char in text:
-        value = (value * 31 + ord(char)) % 2**32
-    return value
+def _registered_or_none(name: str) -> bool | None:
+    try:
+        return registry.is_registered(name)
+    except registry.RegistryUnavailableError:
+        return None
