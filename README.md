@@ -41,7 +41,7 @@ Each provider is switched on by its API keys. The checkout only offers the ones 
   - Backend: Ruff, Django checks, a migration check, and about 830 tests on PostgreSQL.
   - Frontend: ESLint, then the type-check and build.
 - **Postman:** import [`docs/postman/`](docs/postman/) and click **Run collection**. Every endpoint has status-code and body checks.
-- **Google AI Studio:** the [`ai-studio`](../../tree/ai-studio) branch mirrors `frontend/`, and a GitHub Action updates it on every push. Use **Import from GitHub**, then pick that branch.
+- **Google AI Studio:** AI Studio imports an app from the root of a repository's `main` branch, so [`cloudoon-checkout-web`](https://github.com/FranklinMburu/cloudoon-checkout-web) holds `frontend/` on its own. Update it with `git subtree split --prefix frontend -b web-only && git push <web repo> web-only:main`.
 
 ## Run locally
 
