@@ -14,9 +14,11 @@ class Order(models.Model):
     reference = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
     # Same key twice (refresh, double click, retry) returns the existing order instead of charging again.
     idempotency_key = models.CharField(max_length=64, unique=True)
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="orders")
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="orders"
+    )
     email = models.EmailField()
-    status = models.CharField(max_length=10, choices=Status.choices, default=Status.PAID)
+    status = models.CharField(max_length=10, choices=Status.choices, default=Status.PENDING)
 
     currency = models.CharField(max_length=3)
     cycle_months = models.PositiveSmallIntegerField()
@@ -44,22 +46,35 @@ class Order(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
-        constraints = [models.CheckConstraint(condition=models.Q(total__gte=0), name="order_total_not_negative")]
-
-    @property
-    def number(self) -> str:
-        return f"CL-{100000 + self.pk}"
+        constraints = [
+            models.CheckConstraint(condition=models.Q(total__gte=0), name="order_total_not_negative"),
+            # The stored totals must always reconcile, whatever code writes them.
+            models.CheckConstraint(
+                condition=models.Q(total=models.F("subtotal") - models.F("discount") + models.F("tax")),
+                name="order_totals_reconcile",
+            ),
+        ]
 
     def __str__(self):
         return self.number
+
+    @property
+    def number(self) -> str:
+        """Customer-facing order number, e.g. CL-100042."""
+        return f"CL-{100000 + self.pk}"
 
 
 class OrderItem(models.Model):
     """A snapshot of a quote line at purchase time; later catalog price changes don't rewrite history."""
 
+    class Kind(models.TextChoices):
+        HOSTING = "hosting", "Hosting"
+        DOMAIN = "domain", "Domain"
+        ADDON = "addon", "Add-on"
+
     order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name="items")
     line_id = models.CharField(max_length=80)
-    kind = models.CharField(max_length=10)
+    kind = models.CharField(max_length=10, choices=Kind.choices)
     title = models.CharField(max_length=200)
     details = models.JSONField(default=list)
     term_label = models.CharField(max_length=20)

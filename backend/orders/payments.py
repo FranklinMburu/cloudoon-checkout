@@ -14,8 +14,8 @@ from dataclasses import dataclass
 from decimal import Decimal
 
 
-class PaymentDeclined(Exception):
-    pass
+class PaymentDeclinedError(Exception):
+    """The provider refused the payment; no money was taken."""
 
 
 @dataclass
@@ -24,22 +24,25 @@ class Charge:
     label: str
 
 
-def charge(method: str, details: dict, amount: Decimal, currency: str) -> Charge:
+def charge(method: str, details: dict, amount: Decimal, currency: str, idempotency_key: str) -> Charge:
+    """Charge `amount` once. Real gateways accept `idempotency_key` so a retried call can't charge twice."""
     reference = f"sim_{uuid.uuid4().hex[:16]}"
     if method == "card":
         token = details.get("token", "")
         if token == "tok_chargeDeclined":
-            raise PaymentDeclined("Your bank declined this card. No money was taken. Try another card or pay with M-Pesa or PayPal.")
+            raise PaymentDeclinedError(
+                "Your bank declined this card. No money was taken. Try another card or pay with M-Pesa or PayPal."
+            )
         if not token.startswith("tok_"):
-            raise PaymentDeclined("We couldn’t read this card. Check the details and try again.")
+            raise PaymentDeclinedError("We couldn’t read this card. Check the details and try again.")
         brand = details.get("brand") or "Card"
         last4 = re.sub(r"\D", "", str(details.get("last4", "")))[-4:]
         return Charge(reference, f"{brand} ending {last4}" if last4 else brand)
     if method == "mpesa":
         phone = re.sub(r"\D", "", str(details.get("phone", "")))
         if not re.fullmatch(r"(?:254|0)?(7|1)\d{8}", phone):
-            raise PaymentDeclined("Enter a Safaricom number like 0712 345 678.")
+            raise PaymentDeclinedError("Enter a Safaricom number like 0712 345 678.")
         return Charge(reference, f"M-Pesa {details.get('phone')}")
     if method == "paypal":
         return Charge(reference, "PayPal")
-    raise PaymentDeclined("Choose a payment method.")
+    raise PaymentDeclinedError("Choose a payment method.")

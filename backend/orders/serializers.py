@@ -7,7 +7,9 @@ from pricing.serializers import CartSerializer
 class BillingSerializer(serializers.Serializer):
     full_name = serializers.CharField(max_length=150)
     email = serializers.EmailField()
-    phone = serializers.RegexField(r"^[+\d][\d\s-]{8,20}$", error_messages={"invalid": "Enter a valid phone number, including country code."})
+    phone = serializers.RegexField(
+        r"^[+\d][\d\s-]{8,20}$", error_messages={"invalid": "Enter a valid phone number, including country code."}
+    )
     country = serializers.CharField(max_length=2)
     address = serializers.CharField(max_length=200)
     city = serializers.CharField(max_length=100)
@@ -42,14 +44,27 @@ class OrderCreateSerializer(serializers.Serializer):
 
     def validate(self, attrs):
         if attrs["billing"]["country"] != attrs["cart"]["country"]:
-            raise serializers.ValidationError({"billing": {"country": "Billing country must match the country used for tax."}})
+            raise serializers.ValidationError(
+                {"billing": {"country": "Billing country must match the country used for tax."}}
+            )
         return attrs
 
 
 class OrderItemSerializer(serializers.ModelSerializer):
     class Meta:
         model = OrderItem
-        fields = ["line_id", "kind", "title", "details", "term_label", "due_today", "regular_price", "renewal_amount", "renewal_label", "auto_renew"]
+        fields = [
+            "line_id",
+            "kind",
+            "title",
+            "details",
+            "term_label",
+            "due_today",
+            "regular_price",
+            "renewal_amount",
+            "renewal_label",
+            "auto_renew",
+        ]
 
 
 class OrderSerializer(serializers.ModelSerializer):
@@ -59,6 +74,19 @@ class OrderSerializer(serializers.ModelSerializer):
     class Meta:
         model = Order
         fields = [
-            "reference", "number", "status", "email", "currency", "cycle_months", "subtotal", "discount", "promo_code",
-            "tax", "tax_label", "total", "payment_label", "created_at", "items",
+            "reference",
+            "number",
+            "status",
+            "email",
+            "currency",
+            "cycle_months",
+            "subtotal",
+            "discount",
+            "promo_code",
+            "tax",
+            "tax_label",
+            "total",
+            "payment_label",
+            "created_at",
+            "items",
         ]
