@@ -2,7 +2,7 @@
 
 from rest_framework import serializers
 
-from pricing.engine import CYCLES, DOMAIN_MODES, MAX_DOMAINS
+from pricing.engine import CYCLES, DOMAIN_MODES, DOMAINS_ONLY, MAX_DOMAINS
 
 
 class SharedSerializer(serializers.Serializer):
@@ -47,7 +47,7 @@ class AddonsSerializer(serializers.Serializer):
 
 
 class CartSerializer(serializers.Serializer):
-    category = serializers.ChoiceField(choices=["shared", "vps", "dedicated", "cloud"])
+    category = serializers.ChoiceField(choices=["shared", "vps", "dedicated", "cloud", DOMAINS_ONLY])
     shared = SharedSerializer(required=False)
     vps = VpsSerializer(required=False)
     dedicated = DedicatedSerializer(required=False)
@@ -65,7 +65,7 @@ class CartSerializer(serializers.Serializer):
         return value
 
     def validate(self, attrs):
-        if attrs["category"] not in attrs:
+        if attrs["category"] != DOMAINS_ONLY and attrs["category"] not in attrs:
             raise serializers.ValidationError(
                 {attrs["category"]: "Configuration for the selected hosting type is required."}
             )

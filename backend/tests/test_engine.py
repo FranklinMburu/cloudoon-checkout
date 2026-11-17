@@ -157,3 +157,32 @@ def test_invalid_carts_are_rejected_with_a_field(catalog, overrides, field):
 def test_existing_domain_with_unknown_tld_is_free(catalog):
     q = build_quote(catalog, cart(catalog, domains=[{"name": "brand.xyz", "mode": "existing"}]))
     assert q["lines"][1]["due_today"] == 0 and q["lines"][1]["renewal"] is None
+
+
+# --- Domain-only orders (hosting removed) ---------------------------------------
+
+DOMAIN = {"name": "mybrand.co.ke", "mode": "register"}
+
+
+def test_hosting_can_be_removed_only_when_a_domain_remains(catalog):
+    assert build_quote(catalog, cart(catalog))["lines"][0]["removable"] is False
+    assert build_quote(catalog, cart(catalog, domains=[DOMAIN]))["lines"][0]["removable"] is True
+
+
+def test_domain_only_order_has_just_the_domains(catalog):
+    q = build_quote(catalog, cart(catalog, category="none", domains=[DOMAIN], addons={"backups": True}))
+    assert [line["id"] for line in q["lines"]] == ["domain:mybrand.co.ke"]
+    assert q["lines"][0]["due_today"] > 0  # the free domain needs hosting
+    assert q["cycle_options"] == [] and q["free_domain"]["eligible"] is False
+    assert q["total"] == q["subtotal"] + q["tax"]
+
+
+def test_domain_only_order_needs_a_domain(catalog):
+    with pytest.raises(PricingError) as error:
+        build_quote(catalog, cart(catalog, category="none"))
+    assert error.value.field == "category"
+
+
+def test_hosting_promo_is_refused_without_hosting(catalog):
+    q = build_quote(catalog, cart(catalog, category="none", domains=[DOMAIN], promo_code="HOSTING25"))
+    assert q["promo"] is None and "only applies to hosting" in q["promo_error"]

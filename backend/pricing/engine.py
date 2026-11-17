@@ -29,6 +29,7 @@ HOURS_PER_MONTH = Decimal(730)
 MAX_DOMAINS = 10
 MAX_MAILBOXES = 50
 DOMAIN_MODES = ("register", "transfer", "existing")
+DOMAINS_ONLY = "none"  # category for an order with domains but no hosting
 FREE_DOMAIN_MIN_CYCLE = 12
 
 _DOMAIN_RE = re.compile(r"^([a-z0-9-]+\.)+[a-z]{2,}$")
@@ -289,10 +290,16 @@ class QuoteBuilder:
         self.free_domain: str | None = None
 
     def build(self) -> dict[str, Any]:
-        self._add_hosting()
-        self._add_product_extras()
-        self._add_domains()
-        self._add_value_added_services()
+        if self.cart.category == DOMAINS_ONLY:
+            # Domains only: hosting extras and add-ons (backups, SSL, email...) need a server to attach to.
+            if not self.cart.domains:
+                raise PricingError("category", "Add hosting or a domain to your order.")
+            self._add_domains()
+        else:
+            self._add_hosting()
+            self._add_product_extras()
+            self._add_domains()
+            self._add_value_added_services()
         return self._totals()
 
     # --- Line items ---------------------------------------------------------
@@ -312,7 +319,8 @@ class QuoteBuilder:
                 "regular_price": regular,
                 "renewal": {"amount": regular, "label": every_label(self.months)},
                 "badge": f"Save {int(current['discount'] * 100)}%" if current["discount"] > 0 else None,
-                "removable": False,
+                # Removing hosting leaves a domain-only order, so it needs a domain to fall back on.
+                "removable": bool(self.cart.domains),
                 "auto_renew": True,
             }
         )
@@ -482,7 +490,13 @@ class QuoteBuilder:
         promo, error = check_promo(self.catalog, self.cart.promo_code, self.today)
         if not promo:
             return None, error
-        base = self.lines[0]["due_today"] if promo["applies_to"] == "hosting" else subtotal
+        if promo["applies_to"] == "hosting":
+            hosting = next((line for line in self.lines if line["kind"] == "hosting"), None)
+            if hosting is None:
+                return None, f"{promo['pk']} only applies to hosting."
+            base = hosting["due_today"]
+        else:
+            base = subtotal
         return {
             "code": promo["pk"],
             "label": promo["label"],
@@ -522,7 +536,11 @@ class QuoteBuilder:
             "tax_label": self._tax_label(),
             "tax": tax,
             "total": currency.round(taxable + tax),
-            "cycle_options": [cycle_option(self.catalog, self.cart, currency, months) for months in CYCLES],
+            "cycle_options": (
+                []
+                if self.cart.category == DOMAINS_ONLY
+                else [cycle_option(self.catalog, self.cart, currency, months) for months in CYCLES]
+            ),
             "free_domain": {"eligible": free_domain_eligible(self.cart), "applied_to": self.free_domain},
             "cloud_burst_hourly": self._cloud_burst_hourly(),
         }
