@@ -1,7 +1,8 @@
 // The only module that talks to the backend. Components call these typed functions.
 
 import type {
-  Account, AddressSuggestion, AuthProvider, BillingDetails, CartState, Catalog, Cycle, DomainResult, Order, PaymentInput, Quote,
+  Account, AddressSuggestion, AuthProvider, BillingDetails, CartState, Catalog, CheckoutConfig, Cycle, DomainResult, Order, PaymentInput,
+  Quote, SignInMethod,
 } from './types';
 
 /** Deployed API. Override with VITE_API_URL (e.g. http://localhost:8000 for local development). */
@@ -57,12 +58,13 @@ function firstMessage(errors: unknown): string | undefined {
 interface SessionResponse {
   token: string;
   user: { name: string; email: string; provider: AuthProvider };
-  simulated?: boolean;
 }
 
 const toAccount = (r: SessionResponse): Account => ({ ...r.user, token: r.token });
 
 export const api = {
+  config: () => request<CheckoutConfig>('GET', 'config/'),
+
   catalog: (currency: string, cycle: Cycle, signal?: AbortSignal) =>
     request<Catalog>('GET', `catalog/?currency=${encodeURIComponent(currency)}&cycle=${cycle}`, undefined, {}, signal),
 
@@ -73,16 +75,25 @@ export const api = {
   checkDomain: (q: string) =>
     request<{ exact: DomainResult; suggestions: DomainResult[] }>('GET', `domains/check/?q=${encodeURIComponent(q)}`),
 
-  addresses: (q: string, signal?: AbortSignal) =>
-    request<{ results: AddressSuggestion[] }>('GET', `addresses/?q=${encodeURIComponent(q)}`, undefined, {}, signal),
+  addresses: (q: string, country: string, signal?: AbortSignal) =>
+    request<{ results: AddressSuggestion[] }>(
+      'GET', `addresses/?q=${encodeURIComponent(q)}&country=${encodeURIComponent(country)}`, undefined, {}, signal,
+    ),
 
   register: async (email: string, password: string, fullName: string) =>
     toAccount(await request<SessionResponse>('POST', 'auth/register/', { email, password, full_name: fullName })),
 
   login: async (email: string, password: string) => toAccount(await request<SessionResponse>('POST', 'auth/login/', { email, password })),
 
-  oauth: async (provider: 'google' | 'github' | 'sso', email?: string) =>
-    toAccount(await request<SessionResponse>('POST', `auth/oauth/${provider}/`, email ? { email } : {})),
+  /** Where the sign-in popup starts; the backend redirects it to Google or GitHub. */
+  oauthStartUrl: (method: SignInMethod, nonce: string, email?: string) =>
+    `${API_URL}/api/v1/auth/oauth/${method}/start/?nonce=${nonce}${email ? `&email=${encodeURIComponent(email)}` : ''}`,
+
+  /** Polled while the popup is open: null until the customer finishes signing in. */
+  oauthResult: async (nonce: string) => {
+    const r = await request<SessionResponse | { status: 'waiting' }>('POST', 'auth/oauth/result/', { nonce });
+    return 'token' in r ? toAccount(r) : null;
+  },
 
   logout: () => request<void>('POST', 'auth/logout/'),
 
@@ -92,4 +103,7 @@ export const api = {
     payload: { cart: CartState; billing: Omit<BillingDetails, 'is_business'>; payment: PaymentInput; accept_terms: boolean },
     idempotencyKey: string,
   ) => request<Order>('POST', 'orders/', payload, { 'Idempotency-Key': idempotencyKey }),
+
+  /** PayPal order for the server-priced total; PayPal's button then asks the customer to approve it. */
+  createPayPalOrder: (cart: CartState) => request<{ id: string }>('POST', 'payments/paypal/orders/', { cart }),
 };

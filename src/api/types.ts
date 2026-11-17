@@ -10,7 +10,7 @@ export type DomainMode = 'register' | 'transfer' | 'existing';
 /* --------------------------------- Cart --------------------------------- */
 
 export interface CartState {
-  category: ProductCategory;
+  category: ProductCategory | 'none'; // 'none': a domain-only order (hosting removed from the summary)
   shared: { plan: string };
   vps: { managed: boolean; os: string; cpu: number; ram: number; storage: number };
   dedicated: { server: string; location: string; bandwidth: string };
@@ -146,18 +146,34 @@ export interface BillingDetails {
   tax_id: string;
 }
 
+export type PaymentMethod = 'card' | 'mpesa' | 'paypal';
+
 export interface PaymentInput {
-  method: 'card' | 'mpesa' | 'paypal';
-  token?: string;
+  method: PaymentMethod;
+  payment_method?: string; // card: Stripe PaymentMethod id from Stripe.js
   brand?: string;
   last4?: string;
-  phone?: string;
+  phone?: string; // mpesa
+  paypal_order_id?: string; // paypal: the order approved in PayPal's window
+}
+
+export type SignInMethod = 'google' | 'github' | 'sso';
+
+/** GET /config/: what the backend has switched on, plus public keys for the browser SDKs. */
+export interface CheckoutConfig {
+  sign_in: SignInMethod[];
+  payments: {
+    methods: PaymentMethod[];
+    stripe_publishable_key: string;
+    paypal_client_id: string;
+    paypal_currencies: CurrencyCode[];
+  };
 }
 
 export interface Order {
   reference: string;
   number: string;
-  status: string;
+  status: 'pending' | 'paid' | 'failed';
   email: string;
   currency: CurrencyCode;
   cycle_months: number;
@@ -168,6 +184,7 @@ export interface Order {
   tax_label: string;
   total: Money;
   payment_label: string;
+  payment_error: string;
   created_at: string;
   items: {
     line_id: string;

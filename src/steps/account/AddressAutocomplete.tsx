@@ -24,9 +24,10 @@ export function AddressAutocomplete({ value, onChange, onSelect, onBlur, error }
   const wrapRef = useRef<HTMLDivElement>(null);
   const typed = useRef(false);
 
-  const { catalog } = useStore();
+  const { catalog, cart } = useStore();
+  const country = cart.country; // suggestions in the billing country come first
 
-  // Debounced lookup through the API (the backend proxies the address provider).
+  // Debounced lookup through the API (the backend proxies OpenStreetMap's Photon search).
   useEffect(() => {
     if (!typed.current) return;
     const q = value.trim();
@@ -40,7 +41,7 @@ export function AddressAutocomplete({ value, onChange, onSelect, onBlur, error }
     const ctrl = new AbortController();
     const t = setTimeout(() => {
       api
-        .addresses(q, ctrl.signal)
+        .addresses(q, country, ctrl.signal)
         .then((r) => {
           setResults(r.results);
           setActive(-1);
@@ -56,7 +57,7 @@ export function AddressAutocomplete({ value, onChange, onSelect, onBlur, error }
       clearTimeout(t);
       ctrl.abort();
     };
-  }, [value]);
+  }, [value, country]);
 
   useEffect(() => {
     const close = (e: MouseEvent) => {
