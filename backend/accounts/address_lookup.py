@@ -1,36 +1,68 @@
-"""Address autocomplete.
+"""Address suggestions from Photon, an OpenStreetMap geocoder built for search-as-you-type.
 
-SIMULATED provider: production would proxy Google Places Autocomplete or Mapbox
-through this endpoint, so the API key never reaches the browser.
+The browser calls our endpoint rather than Photon directly, so we can cache answers,
+rate-limit per customer and swap provider (Google Places, Mapbox) in one place.
 """
 
-ADDRESSES = [
-    {"line": "Westlands Road, The Mirage Tower 2", "city": "Nairobi", "postal_code": "00800", "country": "KE"},
-    {"line": "Waiyaki Way, ABC Place", "city": "Nairobi", "postal_code": "00800", "country": "KE"},
-    {"line": "Kenyatta Avenue, Kimathi House", "city": "Nairobi", "postal_code": "00100", "country": "KE"},
-    {"line": "Ngong Road, Prestige Plaza", "city": "Nairobi", "postal_code": "00505", "country": "KE"},
-    {"line": "Mombasa Road, Panari Centre", "city": "Nairobi", "postal_code": "00200", "country": "KE"},
-    {"line": "Kimathi Street, Hilton Arcade", "city": "Nairobi", "postal_code": "00100", "country": "KE"},
-    {"line": "Moi Avenue, Nkrumah Road Junction", "city": "Mombasa", "postal_code": "80100", "country": "KE"},
-    {"line": "Oginga Odinga Street, Mega Plaza", "city": "Kisumu", "postal_code": "40100", "country": "KE"},
-    {"line": "Kenyatta Avenue, Nakuru Business Centre", "city": "Nakuru", "postal_code": "20100", "country": "KE"},
-    {"line": "Kampala Road, Workers House", "city": "Kampala", "postal_code": "00256", "country": "UG"},
-    {"line": "Samora Avenue, PPF Tower", "city": "Dar es Salaam", "postal_code": "11101", "country": "TZ"},
-    {"line": "Admiralty Way, Lekki Phase 1", "city": "Lagos", "postal_code": "106104", "country": "NG"},
-    {"line": "Long Street 120", "city": "Cape Town", "postal_code": "8001", "country": "ZA"},
-    {"line": "221B Baker Street", "city": "London", "postal_code": "NW1 6XE", "country": "GB"},
-    {"line": "10 Downing Street", "city": "London", "postal_code": "SW1A 2AA", "country": "GB"},
-    {"line": "350 Fifth Avenue", "city": "New York", "postal_code": "10118", "country": "US"},
-    {"line": "1600 Amphitheatre Parkway", "city": "Mountain View", "postal_code": "94043", "country": "US"},
-    {"line": "Friedrichstraße 43", "city": "Berlin", "postal_code": "10117", "country": "DE"},
-    {"line": "Rue de Rivoli 99", "city": "Paris", "postal_code": "75001", "country": "FR"},
-    {"line": "Damrak 1", "city": "Amsterdam", "postal_code": "1012 LG", "country": "NL"},
-]
+import requests
+from django.core.cache import caches
+
+PHOTON_URL = "https://photon.komoot.io/api/"
+USER_AGENT = "CloudoonCheckout/1.0 (+https://cloudoon-checkout.onrender.com)"
+TIMEOUT_SECONDS = 4
+CACHE_SECONDS = 24 * 60 * 60
+MIN_QUERY_LENGTH = 3
+
+cache = caches["lookups"]
 
 
-def search(query: str, limit: int = 5) -> list[dict]:
-    words = query.lower().split()
-    if len("".join(words)) < 3:
+class AddressLookupUnavailableError(Exception):
+    """Photon didn't answer; the customer can still type the address by hand."""
+
+
+def search(query: str, country: str = "", limit: int = 5) -> list[dict]:
+    query = " ".join(query.split())
+    if len(query) < MIN_QUERY_LENGTH:
         return []
-    matches = [a for a in ADDRESSES if all(w in f"{a['line']} {a['city']} {a['postal_code']}".lower() for w in words)]
-    return matches[:limit]
+
+    key = f"address:{country}:{query.lower()}"
+    if (cached := cache.get(key)) is not None:
+        return cached
+
+    try:
+        # Ask for extra results: some are places without a street, which we skip.
+        response = requests.get(
+            PHOTON_URL,
+            params={"q": query, "limit": limit * 3, "lang": "en"},
+            headers={"User-Agent": USER_AGENT},
+            timeout=TIMEOUT_SECONDS,
+        )
+        response.raise_for_status()
+        features = response.json()["features"]
+    except (requests.RequestException, ValueError, KeyError) as exc:
+        raise AddressLookupUnavailableError from exc
+
+    results = []
+    for feature in features:
+        address = _to_address(feature.get("properties", {}))
+        if address and address not in results:
+            results.append(address)
+    # Addresses in the customer's billing country first.
+    results = sorted(results, key=lambda address: address["country"] != country)[:limit]
+    cache.set(key, results, CACHE_SECONDS)
+    return results
+
+
+def _to_address(place: dict) -> dict | None:
+    street = " ".join(part for part in (place.get("housenumber"), place.get("street")) if part)
+    name = place.get("name")
+    line = ", ".join(part for part in (street, name) if part and part != street)
+    city = place.get("city") or place.get("town") or place.get("village") or place.get("county")
+    if not line or not city or not place.get("countrycode"):
+        return None
+    return {
+        "line": line,
+        "city": city,
+        "postal_code": place.get("postcode", ""),
+        "country": place["countrycode"].upper(),
+    }
