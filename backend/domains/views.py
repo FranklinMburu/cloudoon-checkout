@@ -2,7 +2,7 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from domains.service import InvalidDomainQuery, check
+from domains.service import InvalidDomainQueryError, check
 from pricing.loader import load_catalog
 
 
@@ -14,5 +14,5 @@ class DomainCheckView(APIView):
     def get(self, request):
         try:
             return Response(check(load_catalog(), request.query_params.get("q", "")))
-        except InvalidDomainQuery as exc:
+        except InvalidDomainQueryError as exc:
             return Response({"detail": str(exc), "field": "q"}, status=status.HTTP_400_BAD_REQUEST)

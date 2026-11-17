@@ -12,7 +12,9 @@ def quote_or_error(cart_data: dict):
     """Validate the cart's shape, then price it. Returns (quote, None) or (None, error Response)."""
     serializer = CartSerializer(data=cart_data)
     if not serializer.is_valid():
-        return None, Response({"detail": "Invalid cart.", "errors": serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
+        return None, Response(
+            {"detail": "Invalid cart.", "errors": serializer.errors}, status=status.HTTP_400_BAD_REQUEST
+        )
     try:
         return build_quote(load_catalog(), Cart.from_dict(serializer.validated_data)), None
     except PricingError as exc:

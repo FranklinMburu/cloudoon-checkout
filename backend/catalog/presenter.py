@@ -2,14 +2,20 @@
 
 from django.conf import settings
 
-from pricing.engine import CYCLES, Catalog, Currency, default_cart
+from pricing.catalog import Catalog, Currency
+from pricing.engine import CYCLES, default_cart
 
 
 def priced_catalog(catalog: Catalog, currency: Currency, cycle: int) -> dict:
     usd = currency.convert
     vps = catalog.vps
     return {
-        "currency": {"code": currency.code, "name": currency.name, "symbol": currency.symbol, "decimals": currency.decimals},
+        "currency": {
+            "code": currency.code,
+            "name": currency.name,
+            "symbol": currency.symbol,
+            "decimals": currency.decimals,
+        },
         "currencies": [{"code": c.code, "name": c.name, "symbol": c.symbol} for c in catalog.currencies.values()],
         "countries": [
             {"code": c.code, "name": c.name, "tax_name": c.tax_name, "tax_rate": c.tax_rate, "currency": c.currency}
@@ -41,16 +47,31 @@ def priced_catalog(catalog: Catalog, currency: Currency, cycle: int) -> dict:
             "managed_features": vps["managed_features"],
             "unmanaged_features": vps["unmanaged_features"],
             "operating_systems": [
-                {"slug": k, "name": o["name"], "version": o["version"], "monthly": usd(o["monthly_usd"]),
-                 "min_cpu": o["min_cpu"], "min_ram_gb": o["min_ram_gb"]}
+                {
+                    "slug": k,
+                    "name": o["name"],
+                    "version": o["version"],
+                    "monthly": usd(o["monthly_usd"]),
+                    "min_cpu": o["min_cpu"],
+                    "min_ram_gb": o["min_ram_gb"],
+                }
                 for k, o in catalog.operating_systems.items()
             ],
         },
         "dedicated": {
-            "datacenters": [{"slug": k, "city": d["city"], "country": d["country"]} for k, d in catalog.datacenters.items()],
+            "datacenters": [
+                {"slug": k, "city": d["city"], "country": d["country"]} for k, d in catalog.datacenters.items()
+            ],
             "servers": [
-                {"slug": k, "name": s["name"], "cpu": s["cpu"], "ram": s["ram"], "storage": s["storage"],
-                 "monthly": usd(s["monthly_usd"]), "out_of_stock_at": s["out_of_stock_at"]}
+                {
+                    "slug": k,
+                    "name": s["name"],
+                    "cpu": s["cpu"],
+                    "ram": s["ram"],
+                    "storage": s["storage"],
+                    "monthly": usd(s["monthly_usd"]),
+                    "out_of_stock_at": s["out_of_stock_at"],
+                }
                 for k, s in catalog.servers.items()
             ],
             "bandwidth": [
@@ -60,12 +81,24 @@ def priced_catalog(catalog: Catalog, currency: Currency, cycle: int) -> dict:
         },
         "cloud": {
             "sizes": [
-                {"slug": k, "name": s["name"], "cpu": s["cpu"], "ram_gb": s["ram_gb"], "storage_gb": s["storage_gb"],
-                 "monthly": usd(s["monthly_usd"])}
+                {
+                    "slug": k,
+                    "name": s["name"],
+                    "cpu": s["cpu"],
+                    "ram_gb": s["ram_gb"],
+                    "storage_gb": s["storage_gb"],
+                    "monthly": usd(s["monthly_usd"]),
+                }
                 for k, s in catalog.cloud_sizes.items()
             ],
             "scaling_presets": [
-                {"slug": k, "name": p["name"], "min": p["min_instances"], "max": p["max_instances"], "description": p["description"]}
+                {
+                    "slug": k,
+                    "name": p["name"],
+                    "min": p["min_instances"],
+                    "max": p["max_instances"],
+                    "description": p["description"],
+                }
                 for k, p in catalog.scaling_presets.items()
             ],
         },
@@ -78,8 +111,14 @@ def priced_catalog(catalog: Catalog, currency: Currency, cycle: int) -> dict:
             for k, s in catalog.ssl_options.items()
         ],
         "tlds": [
-            {"tld": k, "register": usd(t["register_usd"]), "renew": usd(t["renew_usd"]), "transfer": usd(t["transfer_usd"]),
-             "privacy_supported": t["privacy_supported"], "free_with_hosting": t["free_with_hosting"]}
+            {
+                "tld": k,
+                "register": usd(t["register_usd"]),
+                "renew": usd(t["renew_usd"]),
+                "transfer": usd(t["transfer_usd"]),
+                "privacy_supported": t["privacy_supported"],
+                "free_with_hosting": t["free_with_hosting"],
+            }
             for k, t in catalog.tlds.items()
         ],
         "limits": {"max_domains": 10, "max_mailboxes": 50},

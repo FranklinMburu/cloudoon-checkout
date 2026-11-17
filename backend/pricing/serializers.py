@@ -66,5 +66,7 @@ class CartSerializer(serializers.Serializer):
 
     def validate(self, attrs):
         if attrs["category"] not in attrs:
-            raise serializers.ValidationError({attrs["category"]: "Configuration for the selected hosting type is required."})
+            raise serializers.ValidationError(
+                {attrs["category"]: "Configuration for the selected hosting type is required."}
+            )
         return attrs

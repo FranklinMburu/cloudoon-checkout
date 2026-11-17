@@ -3,12 +3,13 @@
 import itertools
 import json
 from datetime import date
-from decimal import Decimal as D
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
 
-from pricing.engine import Cart, Catalog, PricingError, build_quote, default_cart
+from pricing.catalog import Catalog, Currency, quantize
+from pricing.engine import Cart, PricingError, build_quote, default_cart
 
 FIXTURE = Path(__file__).resolve().parent.parent / "catalog" / "fixtures" / "catalog.json"
 
@@ -31,23 +32,32 @@ def cart(catalog, **overrides):
 def test_default_cart_matches_known_total(catalog):
     q = build_quote(catalog, cart(catalog))
     # WordPress $8.99/mo, 20% off for 12 months = $7.19 × 12 = $86.28; Kenya VAT 16% = $13.80
-    assert q["lines"][0]["due_today"] == D("86.28")
-    assert q["lines"][0]["renewal"]["amount"] == D("107.88")
-    assert q["tax"] == D("13.80")
-    assert q["total"] == D("100.08")
+    assert q["lines"][0]["due_today"] == Decimal("86.28")
+    assert q["lines"][0]["renewal"]["amount"] == Decimal("107.88")
+    assert q["tax"] == Decimal("13.80")
+    assert q["total"] == Decimal("100.08")
 
 
-@pytest.mark.parametrize("currency,category,cycle,promo,country", list(itertools.product(
-    ["USD", "EUR", "GBP", "KES"],
-    ["shared", "vps", "dedicated", "cloud"],
-    [1, 12, 24, 36],
-    [None, "WELCOME10", "HOSTING25"],
-    ["KE", "US", "GB", "DE"],
-)))
+@pytest.mark.parametrize(
+    "currency,category,cycle,promo,country",
+    list(
+        itertools.product(
+            ["USD", "EUR", "GBP", "KES"],
+            ["shared", "vps", "dedicated", "cloud"],
+            [1, 12, 24, 36],
+            [None, "WELCOME10", "HOSTING25"],
+            ["KE", "US", "GB", "DE"],
+        )
+    ),
+)
 def test_totals_always_reconcile(catalog, currency, category, cycle, promo, country):
     c = cart(
         catalog,
-        category=category, currency=currency, cycle=cycle, promo_code=promo, country=country,
+        category=category,
+        currency=currency,
+        cycle=cycle,
+        promo_code=promo,
+        country=country,
         cloud={"kubernetes": True, "k8s_registry": True},
         dedicated={"bandwidth": "bw-50"},
         domains=[
@@ -59,10 +69,10 @@ def test_totals_always_reconcile(catalog, currency, category, cycle, promo, coun
     )
     q = build_quote(catalog, c)
     places = catalog.currencies[currency].decimals
-    assert sum(l["due_today"] for l in q["lines"]) == q["subtotal"]
+    assert sum(line["due_today"] for line in q["lines"]) == q["subtotal"]
     discount = q["promo"]["amount"] if q["promo"] else 0
     assert q["subtotal"] - discount + q["tax"] == q["total"]
-    for amount in [q["subtotal"], q["tax"], q["total"], *(l["due_today"] for l in q["lines"])]:
+    for amount in [q["subtotal"], q["tax"], q["total"], *(line["due_today"] for line in q["lines"])]:
         assert -amount.as_tuple().exponent == places
     # The selected cycle option always agrees with the hosting line.
     selected = next(o for o in q["cycle_options"] if o["months"] == cycle)
@@ -71,19 +81,23 @@ def test_totals_always_reconcile(catalog, currency, category, cycle, promo, coun
 
 def test_half_cent_rounds_up_not_down(catalog):
     """Float maths turns 201.555 into 201.55; Decimal must give 201.56."""
-    from pricing.engine import Currency, quantize
-
-    assert quantize(D("1119.75") * D("0.18"), 2) == D("201.56")
-    assert Currency("USD", "US Dollar", "$", D(1), 2).round(D("158.355")) == D("158.36")
+    assert quantize(Decimal("1119.75") * Decimal("0.18"), 2) == Decimal("201.56")
+    assert Currency("USD", "US Dollar", "$", Decimal(1), 2).round(Decimal("158.355")) == Decimal("158.36")
 
 
 def test_free_domain_only_first_eligible_registration(catalog):
-    q = build_quote(catalog, cart(catalog, domains=[
-        {"name": "one.io", "mode": "register"},      # .io is not free-eligible
-        {"name": "two.com", "mode": "register"},     # first eligible → free
-        {"name": "three.net", "mode": "register"},   # second eligible → paid
-    ]))
-    by_id = {l["id"]: l for l in q["lines"]}
+    q = build_quote(
+        catalog,
+        cart(
+            catalog,
+            domains=[
+                {"name": "one.io", "mode": "register"},  # .io is not free-eligible
+                {"name": "two.com", "mode": "register"},  # first eligible → free
+                {"name": "three.net", "mode": "register"},  # second eligible → paid
+            ],
+        ),
+    )
+    by_id = {line["id"]: line for line in q["lines"]}
     assert by_id["domain:two.com"]["due_today"] == 0
     assert by_id["domain:three.net"]["due_today"] > 0
     assert by_id["domain:one.io"]["due_today"] > 0
@@ -105,7 +119,7 @@ def test_promo_expired_and_invalid(catalog):
 
 def test_hosting_promo_only_discounts_hosting(catalog):
     q = build_quote(catalog, cart(catalog, promo_code="HOSTING25", addons={"backups": True}))
-    assert q["promo"]["amount"] == (q["lines"][0]["due_today"] * D("0.25")).quantize(D("0.01"))
+    assert q["promo"]["amount"] == (q["lines"][0]["due_today"] * Decimal("0.25")).quantize(Decimal("0.01"))
 
 
 def test_kes_has_no_decimals(catalog):
@@ -115,22 +129,25 @@ def test_kes_has_no_decimals(catalog):
 
 def test_windows_licence_is_its_own_line(catalog):
     q = build_quote(catalog, cart(catalog, category="vps", vps={"os": "windows", "cpu": 2, "ram": 4}))
-    assert any(l["id"] == "addon:os-licence" and not l["removable"] for l in q["lines"])
+    assert any(line["id"] == "addon:os-licence" and not line["removable"] for line in q["lines"])
 
 
-@pytest.mark.parametrize("overrides,field", [
-    ({"category": "vps", "vps": {"os": "windows", "cpu": 1, "ram": 4}}, "vps.os"),
-    ({"category": "vps", "vps": {"ram": 3}}, "vps.ram"),
-    ({"category": "vps", "vps": {"storage": 30}}, "vps.storage"),
-    ({"category": "dedicated", "dedicated": {"server": "epyc-9354p", "location": "nbo"}}, "dedicated.server"),
-    ({"category": "spaceship"}, "category"),
-    ({"cycle": 6}, "cycle"),
-    ({"currency": "XYZ"}, "currency"),
-    ({"domains": [{"name": "not a domain", "mode": "register"}]}, "domains.0.name"),
-    ({"domains": [{"name": "a.com", "mode": "register"}, {"name": "a.com", "mode": "transfer"}]}, "domains.1.name"),
-    ({"domains": [{"name": "brand.xyz", "mode": "register"}]}, "domains.0.name"),
-    ({"addons": {"email_boxes": 51}}, "addons.email_boxes"),
-])
+@pytest.mark.parametrize(
+    "overrides,field",
+    [
+        ({"category": "vps", "vps": {"os": "windows", "cpu": 1, "ram": 4}}, "vps.os"),
+        ({"category": "vps", "vps": {"ram": 3}}, "vps.ram"),
+        ({"category": "vps", "vps": {"storage": 30}}, "vps.storage"),
+        ({"category": "dedicated", "dedicated": {"server": "epyc-9354p", "location": "nbo"}}, "dedicated.server"),
+        ({"category": "spaceship"}, "category"),
+        ({"cycle": 6}, "cycle"),
+        ({"currency": "XYZ"}, "currency"),
+        ({"domains": [{"name": "not a domain", "mode": "register"}]}, "domains.0.name"),
+        ({"domains": [{"name": "a.com", "mode": "register"}, {"name": "a.com", "mode": "transfer"}]}, "domains.1.name"),
+        ({"domains": [{"name": "brand.xyz", "mode": "register"}]}, "domains.0.name"),
+        ({"addons": {"email_boxes": 51}}, "addons.email_boxes"),
+    ],
+)
 def test_invalid_carts_are_rejected_with_a_field(catalog, overrides, field):
     with pytest.raises(PricingError) as err:
         build_quote(catalog, cart(catalog, **overrides))
