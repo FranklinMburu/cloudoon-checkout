@@ -8,8 +8,9 @@ MONEY = {"max_digits": 12, "decimal_places": 2}
 
 class Order(models.Model):
     class Status(models.TextChoices):
+        PENDING = "pending", "Waiting for payment"
         PAID = "paid", "Paid"
-        PENDING = "pending", "Pending payment"
+        FAILED = "failed", "Payment failed"
 
     reference = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
     # Same key twice (refresh, double click, retry) returns the existing order instead of charging again.
@@ -31,7 +32,8 @@ class Order(models.Model):
 
     payment_method = models.CharField(max_length=10)
     payment_label = models.CharField(max_length=80)
-    payment_reference = models.CharField(max_length=40)
+    payment_reference = models.CharField(max_length=40, db_index=True)  # the provider's id for the payment
+    payment_error = models.CharField(max_length=200, blank=True)  # why a pending payment failed
 
     full_name = models.CharField(max_length=150)
     phone = models.CharField(max_length=30)

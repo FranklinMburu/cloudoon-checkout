@@ -101,9 +101,16 @@ STORAGES = {
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
-# Throttle counters must be shared by all gunicorn workers, so production keeps them in the database.
-if not DEBUG:
-    CACHES = {"default": {"BACKEND": "django.core.cache.backends.db.DatabaseCache", "LOCATION": "django_cache"}}
+CACHES = {
+    # Throttle counters must be shared by all gunicorn workers, so production keeps them in the database.
+    "default": (
+        {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}
+        if DEBUG
+        else {"BACKEND": "django.core.cache.backends.db.DatabaseCache", "LOCATION": "django_cache"}
+    ),
+    # Answers from outside services (registries, address search); fine to keep per process.
+    "lookups": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache", "LOCATION": "lookups"},
+}
 
 # --- API ---------------------------------------------------------------------
 
@@ -138,6 +145,31 @@ if not DEBUG:
     CSRF_COOKIE_SECURE = True
     SECURE_HSTS_SECONDS = 60 * 60 * 24 * 30
     SECURE_CONTENT_TYPE_NOSNIFF = True
+
+# --- Integrations -------------------------------------------------------------
+# Each is switched on by its keys; the checkout only offers what is configured.
+
+# Public address of this API (for callback URLs). Render sets RENDER_EXTERNAL_URL.
+PUBLIC_API_URL = os.environ.get("PUBLIC_API_URL") or os.environ.get("RENDER_EXTERNAL_URL", "http://localhost:8000")
+
+GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
+GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "")
+GITHUB_CLIENT_ID = os.environ.get("GITHUB_CLIENT_ID", "")
+GITHUB_CLIENT_SECRET = os.environ.get("GITHUB_CLIENT_SECRET", "")
+
+STRIPE_PUBLISHABLE_KEY = os.environ.get("STRIPE_PUBLISHABLE_KEY", "")
+STRIPE_SECRET_KEY = os.environ.get("STRIPE_SECRET_KEY", "")
+
+# Daraja sandbox by default; the shortcode and passkey below are Safaricom's public test values.
+MPESA_BASE_URL = os.environ.get("MPESA_BASE_URL", "https://sandbox.safaricom.co.ke")
+MPESA_CONSUMER_KEY = os.environ.get("MPESA_CONSUMER_KEY", "")
+MPESA_CONSUMER_SECRET = os.environ.get("MPESA_CONSUMER_SECRET", "")
+MPESA_SHORTCODE = os.environ.get("MPESA_SHORTCODE", "174379")
+MPESA_PASSKEY = os.environ.get("MPESA_PASSKEY", "bfb279f9aa9bdbcf158e97dd71a467cd2e0c893059b10f78e6b72ada1ed2c919")
+
+PAYPAL_BASE_URL = os.environ.get("PAYPAL_BASE_URL", "https://api-m.sandbox.paypal.com")
+PAYPAL_CLIENT_ID = os.environ.get("PAYPAL_CLIENT_ID", "")
+PAYPAL_CLIENT_SECRET = os.environ.get("PAYPAL_CLIENT_SECRET", "")
 
 # --- App settings -------------------------------------------------------------
 

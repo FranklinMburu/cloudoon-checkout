@@ -25,10 +25,14 @@ class BillingSerializer(serializers.Serializer):
 
 class PaymentSerializer(serializers.Serializer):
     method = serializers.ChoiceField(choices=["card", "mpesa", "paypal"])
-    token = serializers.CharField(max_length=60, required=False, allow_blank=True)
+    # card: the Stripe PaymentMethod made by Stripe.js in the browser, plus brand/last4 for the receipt
+    payment_method = serializers.CharField(max_length=100, required=False, allow_blank=True)
     brand = serializers.CharField(max_length=30, required=False, allow_blank=True)
     last4 = serializers.CharField(max_length=4, required=False, allow_blank=True)
+    # mpesa: the phone that receives the prompt
     phone = serializers.CharField(max_length=20, required=False, allow_blank=True)
+    # paypal: the order the customer approved in PayPal's window
+    paypal_order_id = serializers.CharField(max_length=40, required=False, allow_blank=True)
 
 
 class OrderCreateSerializer(serializers.Serializer):
@@ -87,6 +91,7 @@ class OrderSerializer(serializers.ModelSerializer):
             "tax_label",
             "total",
             "payment_label",
+            "payment_error",
             "created_at",
             "items",
         ]
