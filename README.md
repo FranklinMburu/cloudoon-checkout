@@ -10,6 +10,8 @@ React 19 + TypeScript + Tailwind CSS. A thin client: every product, price, disco
 npm install
 VITE_API_URL=http://localhost:8000 npm run dev    # API from ../backend; defaults to the deployed API
 npm run build                                     # type-check + production build
+npm run lint                                      # ESLint (TypeScript + Rules of Hooks)
+npm run format                                    # Prettier
 ```
 
 It also runs unchanged in **Google AI Studio**: the `index.html` import map loads React from a CDN, and Tailwind runs from its browser build.
@@ -22,8 +24,10 @@ src/
   api/types.ts           API request/response types (snake_case, money as decimal strings)
   api/paymentProvider.ts simulated card tokenization (stands in for Stripe.js)
   state/store.tsx        cart (localStorage), catalog + quote from the API, checkout (sessionStorage)
-  components/            design-system primitives, header/stepper, order summary
-  steps/configure/       step 1: hosting, billing period, domain, add-ons
+  lib/                   formatting, validation, safe storage helpers
+  components/ui/         design-system primitives (Button, RadioCard, TextField, Switch, ...)
+  components/            header/stepper, order summary, boot screen, icons
+  steps/configure/       step 1: hosting (one file per product type), billing period, domain, add-ons
   steps/account/         step 2: inline auth (guest / sign-up / login / OAuth), billing, address lookup
   steps/payment/         step 3: payment method + itemised review
   steps/Confirmation.tsx receipt (survives a refresh; the cart is emptied after payment)
@@ -34,16 +38,16 @@ src/
 
 | Requirement | Where |
 |---|---|
-| Domain search / register / transfer / use existing, TLD pricing, auto-renew, WHOIS privacy | `DomainSection.tsx` (availability from `GET /domains/check/`) |
-| Shared, VPS (managed, OS, sliders), Dedicated (hardware, data center, bandwidth), Cloud (sizes, autoscaling, Kubernetes) | `HostingSection.tsx` (catalog from `GET /catalog/`) |
-| Backups, SSL, email, DDoS, CDN | `AddonsSection.tsx` |
+| Domain search / register / transfer / use existing, TLD pricing, auto-renew, WHOIS privacy | `DomainPanel.tsx` (availability from `GET /domains/check/`) |
+| Shared, VPS (managed, OS, sliders), Dedicated (hardware, data center, bandwidth), Cloud (sizes, autoscaling, Kubernetes) | `hosting/*` (catalog from `GET /catalog/`) |
+| Backups, SSL, email, DDoS, CDN | `AddonsPanel.tsx` |
 | Currency switcher → real-time recalculation incl. tax | header select → new catalog + `POST /quote/` |
 | Billing cycles with "Save X%", monthly vs upfront | `BillingCycleSection.tsx` (`quote.cycle_options`) |
 | Inline guest / sign-up / login without losing the cart; OAuth Google, GitHub, SSO | `AuthPanel.tsx`, `AccountStep.tsx` |
 | Real-time validation, inline errors, password strength, address autocomplete | `lib/validation.ts`, `AddressAutocomplete.tsx` |
 | Sticky summary / mobile drawer with term changes, domains, promo, tax, deletions | `OrderSummary.tsx` |
 | Initial term vs renewal, all terms stated before payment | summary lines + `PaymentStep.tsx` review (dates, promo first-term note, cloud hourly rate) |
-| Max 3 steps · all interaction states · 1440 / 375 · ≥ 44px targets | `App.tsx`, `components/ui.tsx`, `DesignSystem.tsx` |
+| Max 3 steps · all interaction states · 1440 / 375 · ≥ 44px targets | `App.tsx`, `components/ui/`, `DesignSystem.tsx` |
 
 ## Design decisions
 
