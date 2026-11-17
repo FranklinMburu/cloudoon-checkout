@@ -30,7 +30,9 @@ class Country(models.Model):
     code = models.CharField(max_length=2, primary_key=True)
     name = models.CharField(max_length=80)
     tax_name = models.CharField(max_length=30, default="VAT")
-    tax_rate = models.DecimalField(max_digits=5, decimal_places=4, validators=[MinValueValidator(0), MaxValueValidator(1)])
+    tax_rate = models.DecimalField(
+        max_digits=5, decimal_places=4, validators=[MinValueValidator(0), MaxValueValidator(1)]
+    )
     currency = models.ForeignKey(Currency, on_delete=models.PROTECT)
     sort_order = models.PositiveSmallIntegerField(default=0)
 
@@ -63,7 +65,9 @@ class CycleDiscount(models.Model):
 
     category = models.ForeignKey(ProductCategory, on_delete=models.CASCADE, related_name="cycle_discounts")
     months = models.PositiveSmallIntegerField(choices=MONTHS)
-    percent = models.DecimalField(max_digits=4, decimal_places=2, validators=[MinValueValidator(0), MaxValueValidator(1)])
+    percent = models.DecimalField(
+        max_digits=4, decimal_places=2, validators=[MinValueValidator(0), MaxValueValidator(1)]
+    )
 
     class Meta:
         ordering = ["category", "months"]
@@ -107,6 +111,8 @@ class VpsPricing(models.Model):
 
     class Meta:
         verbose_name_plural = "VPS pricing"
+        # Exactly one row: the engine reads a single price list.
+        constraints = [models.CheckConstraint(condition=models.Q(id=1), name="vps_pricing_single_row")]
 
     def __str__(self):
         return "VPS pricing"
@@ -257,7 +263,9 @@ class Promo(models.Model):
 
     code = models.CharField(max_length=30, primary_key=True)
     label = models.CharField(max_length=80)
-    percent = models.DecimalField(max_digits=4, decimal_places=2, validators=[MinValueValidator(0), MaxValueValidator(1)])
+    percent = models.DecimalField(
+        max_digits=4, decimal_places=2, validators=[MinValueValidator(0), MaxValueValidator(1)]
+    )
     applies_to = models.CharField(max_length=10, choices=APPLIES_TO, default="all")
     valid_until = models.DateField(null=True, blank=True)
 
