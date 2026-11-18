@@ -184,3 +184,15 @@ def test_registering_a_domain_taken_since_the_search_is_refused(api, cart):
     r = post_order(api, order_payload(cart))
     assert r.status_code == 409 and "taken.co.ke" in r.json()["detail"]
     assert Order.objects.count() == 0
+
+
+def test_ensure_admin_creates_the_admin_login_once(monkeypatch):
+    from django.contrib.auth import get_user_model
+    from django.core.management import call_command
+
+    monkeypatch.setenv("DJANGO_SUPERUSER_USERNAME", "admin")
+    monkeypatch.setenv("DJANGO_SUPERUSER_PASSWORD", "Admin-Pass-2026")
+    call_command("ensure_admin")
+    call_command("ensure_admin")  # second run leaves it alone
+    admin = get_user_model().objects.get(username="admin")
+    assert admin.is_superuser and admin.check_password("Admin-Pass-2026")
